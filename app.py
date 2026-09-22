@@ -172,6 +172,34 @@ def telegram_send(chat_id,text):
     except Exception:
         pass
 
+def telegram_bot_username():
+    configured=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@").strip()
+    if configured:
+        return configured
+    try:
+        me=telegram_api("getMe")
+        return (me or {}).get("result",{}).get("username","")
+    except Exception:
+        return ""
+
+def telegram_configure_webhook():
+    public_url=os.getenv("APP_PUBLIC_URL","").rstrip("/")
+    secret=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
+    if not public_url or not os.getenv("TELEGRAM_BOT_TOKEN"):
+        return False
+    payload={"url":public_url+"/telegram/webhook","allowed_updates":["message"]}
+    if secret:
+        payload["secret_token"]=secret
+    try:
+        result=telegram_api("setWebhook",payload)
+        return bool(result and result.get("ok"))
+    except Exception:
+        return False
+
+@app.on_event("startup")
+def setup_telegram_webhook():
+    telegram_configure_webhook()
+
 def telegram_download_photo(file_id):
     meta=telegram_api("getFile",{"file_id":file_id})
     path=meta["result"]["file_path"]
@@ -270,13 +298,13 @@ def state(authorization:Optional[str]=Header(None)):
 @app.get("/api/telegram/status")
 def telegram_status(authorization:Optional[str]=Header(None)):
     u=user(authorization)
-    username=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@")
-    return {"connected":bool(u.get("telegram_user_id")),"bot_username":username}
+    username=telegram_bot_username()
+    return {"connected":bool(u.get("telegram_user_id")),"bot_username":username,"configured":bool(username)}
 
 @app.post("/api/telegram/link")
 def telegram_link(authorization:Optional[str]=Header(None)):
     u=user(authorization)
-    username=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@")
+    username=telegram_bot_username()
     if not username:
         raise HTTPException(503,"Telegram-бот пока не настроен")
     token=secrets.token_urlsafe(18)
