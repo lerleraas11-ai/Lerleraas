@@ -1,4 +1,4 @@
-import os, sqlite3, secrets, hashlib, hmac, json, io
+import os, sqlite3, secrets, hashlib, hmac, json, io, urllib.request, urllib.parse
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -61,7 +61,27 @@ def init():
       meta TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS telegram_groups(
+      media_group_id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      product_id INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
+    ucols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+    for col,ddl in [
+      ("telegram_user_id","ALTER TABLE users ADD COLUMN telegram_user_id TEXT"),
+      ("telegram_chat_id","ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
+      ("telegram_link_token","ALTER TABLE users ADD COLUMN telegram_link_token TEXT")
+    ]:
+        if col not in ucols: c.execute(ddl)
+    pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
+    for col,ddl in [
+      ("photos_json","ALTER TABLE products ADD COLUMN photos_json TEXT DEFAULT '[]'"),
+      ("source","ALTER TABLE products ADD COLUMN source TEXT DEFAULT 'web'"),
+      ("telegram_message_id","ALTER TABLE products ADD COLUMN telegram_message_id TEXT")
+    ]:
+        if col not in pcols: c.execute(ddl)
     c.commit()
     c.close()
 init()
@@ -111,19 +131,62 @@ def ai_client():
     except Exception:
         return None
 
-def ask_ai(instructions,prompt):
+def ask_ai(instructions,prompt,image_url=None):
     cli=ai_client()
     if not cli:
         return None
     try:
+        content=[{"type":"input_text","text":prompt}]
+        if image_url and image_url.startswith("/uploads/"):
+            path=BASE/image_url.lstrip("/")
+            if path.exists():
+                import base64, mimetypes
+                mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
+                data=base64.b64encode(path.read_bytes()).decode()
+                content.append({"type":"input_image","image_url":"data:"+mime+";base64,"+data})
         r=cli.responses.create(
             model=os.getenv("OPENAI_MODEL","gpt-5.6-luna"),
             instructions=instructions,
-            input=prompt
+            input=[{"role":"user","content":content}]
         )
         return r.output_text
     except Exception:
         return None
+
+def telegram_api(method,payload=None):
+    token=os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return None
+    data=None
+    headers={}
+    if payload is not None:
+        data=json.dumps(payload,ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"]="application/json"
+    req=urllib.request.Request("https://api.telegram.org/bot"+token+"/"+method,data=data,headers=headers)
+    with urllib.request.urlopen(req,timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+def telegram_send(chat_id,text):
+    try:
+        telegram_api("sendMessage",{"chat_id":chat_id,"text":text})
+    except Exception:
+        pass
+
+def telegram_download_photo(file_id):
+    meta=telegram_api("getFile",{"file_id":file_id})
+    path=meta["result"]["file_path"]
+    token=os.getenv("TELEGRAM_BOT_TOKEN")
+    raw=urllib.request.urlopen("https://api.telegram.org/file/bot"+token+"/"+path,timeout=30).read()
+    fn=secrets.token_hex(8)+".jpg"
+    out=UPLOADS/fn
+    try:
+        img=Image.open(io.BytesIO(raw))
+        img=ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((1800,1800))
+        img.save(out,"JPEG",quality=90,optimize=True)
+    except Exception:
+        out.write_bytes(raw)
+    return "/uploads/"+fn
 
 class Register(BaseModel):
     name:str
@@ -203,6 +266,93 @@ def state(authorization:Optional[str]=Header(None)):
         "stats":{"earned":earned,"profit":profit,"sold":len(sold),"avg":earned/len(sold) if sold else 0}
     }
 
+
+@app.get("/api/telegram/status")
+def telegram_status(authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    username=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@")
+    return {"connected":bool(u.get("telegram_user_id")),"bot_username":username}
+
+@app.post("/api/telegram/link")
+def telegram_link(authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    username=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@")
+    if not username:
+        raise HTTPException(503,"Telegram-бот пока не настроен")
+    token=secrets.token_urlsafe(18)
+    c=con()
+    c.execute("UPDATE users SET telegram_link_token=? WHERE id=?",(token,u["id"]))
+    c.commit(); c.close()
+    return {"url":"https://t.me/"+username+"?start="+token}
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bot_api_secret_token:Optional[str]=Header(None)):
+    secret=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
+    if secret and x_telegram_bot_api_secret_token!=secret:
+        raise HTTPException(403,"Bad webhook secret")
+    update=await request.json()
+    msg=update.get("message") or {}
+    if not msg:
+        return {"ok":True}
+    chat_id=str((msg.get("chat") or {}).get("id",""))
+    tg_user_id=str((msg.get("from") or {}).get("id",""))
+    text=(msg.get("text") or "").strip()
+    if text.startswith("/start"):
+        parts=text.split(maxsplit=1)
+        link_token=parts[1] if len(parts)>1 else ""
+        c=con()
+        u=c.execute("SELECT * FROM users WHERE telegram_link_token=?",(link_token,)).fetchone()
+        if not u:
+            c.close()
+            telegram_send(chat_id,"Ссылка устарела. Открой Авито-помощник и нажми «Подключить Telegram» ещё раз.")
+            return {"ok":True}
+        c.execute("UPDATE users SET telegram_user_id=?,telegram_chat_id=?,telegram_link_token=NULL WHERE id=?",(tg_user_id,chat_id,u["id"]))
+        c.commit(); c.close()
+        event(u["id"],"TELEGRAM_CONNECTED")
+        telegram_send(chat_id,"Готово 💜 Telegram связан с твоим Авито-помощником. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
+        return {"ok":True}
+    photos=msg.get("photo") or []
+    if photos:
+        c=con()
+        u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+        if not u:
+            c.close()
+            telegram_send(chat_id,"Сначала свяжи Telegram с аккаунтом через кнопку в Авито-помощнике 💜")
+            return {"ok":True}
+        url=telegram_download_photo(photos[-1]["file_id"])
+        caption=(msg.get("caption") or "").strip()
+        name=caption.splitlines()[0][:120] if caption else "Товар из Telegram"
+        media_group_id=msg.get("media_group_id")
+        pid=None
+        if media_group_id:
+            grp=c.execute("SELECT * FROM telegram_groups WHERE media_group_id=?",(str(media_group_id),)).fetchone()
+            if grp:
+                pid=grp["product_id"]
+                row=c.execute("SELECT photos_json,photo_url FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+                arr=[]
+                try: arr=json.loads(row["photos_json"] or "[]")
+                except Exception: pass
+                if not arr and row["photo_url"]: arr=[row["photo_url"]]
+                arr.append(url)
+                c.execute("UPDATE products SET photos_json=? WHERE id=?",(json.dumps(arr),pid))
+            else:
+                arr=[url]
+                cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
+                                 VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
+                pid=cur.lastrowid
+                c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id) VALUES(?,?,?)",(str(media_group_id),u["id"],pid))
+                event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
+        else:
+            cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
+                             VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps([url]),0,"draft","telegram",str(msg.get("message_id",""))))
+            pid=cur.lastrowid
+            event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
+        c.commit(); c.close()
+        telegram_send(chat_id,"Фото получила 💜 Товар уже появился в Авито-помощнике. Открой приложение — там можно разобрать его с AI и сделать объявление.")
+        return {"ok":True}
+    telegram_send(chat_id,"Пришли фото товара или альбом из нескольких фото. Я перенесу их в Авито-помощник 💜")
+    return {"ok":True}
+
 @app.post("/api/products")
 async def add_product(
     authorization:Optional[str]=Header(None),
@@ -258,12 +408,28 @@ def analyze(pid:int,authorization:Optional[str]=Header(None)):
     ).fetchall()]
     c.close()
     result=ask_ai(
-        "Ты AI-помощник продавца. Не выдумывай характеристики. Отвечай коротко и практично.",
-        "Товар: "+p["name"]+"; категория: "+(p["category"] or "")+
+        """Ты AI-помощник продавца. Анализируй фото товара точно и не выдумывай характеристики.
+Начни ответ строго так:
+НАЗВАНИЕ: <короткое название>
+КАТЕГОРИЯ: <категория>
+РАЗБОР: <что важно покупателю, что видно, что уточнить>.
+Если чего-то не видно — так и скажи.""",
+        "Текущая подпись: "+p["name"]+"; категория: "+(p["category"] or "")+
         "; состояние: "+(p["condition"] or "")+
-        "; прошлые продажи: "+json.dumps(history,ensure_ascii=False)+
-        ". Что важно покупателю и что уточнить?"
+        "; прошлые продажи: "+json.dumps(history,ensure_ascii=False),
+        p.get("photo_url")
     )
+    if result and "НАЗВАНИЕ:" in result:
+        lines=result.splitlines()
+        new_name=None; new_cat=None
+        for line in lines[:4]:
+            if line.startswith("НАЗВАНИЕ:"): new_name=line.split(":",1)[1].strip()
+            if line.startswith("КАТЕГОРИЯ:"): new_cat=line.split(":",1)[1].strip()
+        if new_name or new_cat:
+            c=con()
+            if new_name: c.execute("UPDATE products SET name=? WHERE id=? AND user_id=?",(new_name,pid,u["id"]))
+            if new_cat: c.execute("UPDATE products SET category=? WHERE id=? AND user_id=?",(new_cat,pid,u["id"]))
+            c.commit(); c.close()
     if not result:
         result="Демо-разбор: "+p["name"]+". Проверь размер, маркировку, комплект и дефекты. Чем точнее карточка, тем проще покупателю принять решение."
     event(u["id"],"PRODUCT_ANALYZED",pid)
