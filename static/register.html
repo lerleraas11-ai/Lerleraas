@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Регистрация — Бизнес из дома</title>
+<style>
+:root{--lime:#dcff4b;--muted:#cdbff1}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Arial;background:radial-gradient(circle at 75% -10%,#7540d8 0,#35106e 35%,#210b48 75%);color:#fff}.app{max-width:480px;margin:auto;min-height:100vh;padding:10vh 16px 40px}.logo{font-size:27px;font-weight:950;line-height:.95}.logo i{color:var(--lime)}.card{background:#ffffff12;border:1px solid #ffffff22;border-radius:22px;padding:18px;margin-top:24px}.field{margin:11px 0}.label{font-size:13px;color:var(--muted);margin-bottom:5px}input{width:100%;padding:14px;border-radius:14px;border:1px solid #7551b9;background:#2b1259;color:white;font-size:16px}.btn{width:100%;border:0;border-radius:16px;padding:15px;font-weight:850;font-size:16px;background:var(--lime);color:#24103e}.muted{color:var(--muted);font-size:13px}.link{color:var(--lime);font-weight:800;text-decoration:none}.err{color:#ffb1c2;margin-top:10px}.ok{color:var(--lime);margin-top:10px}
+</style></head><body>
+<div class="app"><div class="logo">Бизнес<br>из <i>дома</i></div>
+<div class="card"><h2>Создать аккаунт</h2>
+<div class="field"><div class="label">Имя</div><input id="name" autocomplete="name"></div>
+<div class="field"><div class="label">Email</div><input id="email" type="email" autocomplete="email"></div>
+<div class="field"><div class="label">Пароль — минимум 6 символов</div><input id="pass" type="password" autocomplete="new-password"></div>
+<div class="field"><div class="label">Цель на месяц</div><input id="goal" type="number" value="70000"></div>
+<button id="btn" class="btn" type="button">Создать аккаунт</button>
+<div id="msg" class="err"></div>
+<div class="muted" style="text-align:center;margin-top:14px"><a class="link" href="/">Уже есть аккаунт? Войти</a></div>
+</div></div>
+<script>
+(function(){
+ const btn=document.getElementById('btn');
+ btn.addEventListener('click',async function(){
+   const msg=document.getElementById('msg'); msg.className='err'; msg.textContent='';
+   const body={name:document.getElementById('name').value.trim(),email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value,goal:Number(document.getElementById('goal').value||70000)};
+   if(!body.name){msg.textContent='Напиши имя';return}
+   if(!body.email){msg.textContent='Напиши email';return}
+   if(body.password.length<6){msg.textContent='Пароль должен быть минимум 6 символов';return}
+   btn.disabled=true;btn.textContent='Создаю…';
+   try{
+     const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+     const data=await r.json();
+     if(!r.ok) throw new Error(data.detail||'Не получилось создать аккаунт');
+     localStorage.setItem('bizhome_token',data.token);
+     msg.className='ok';msg.textContent='Готово! Открываю кабинет…';
+     location.href='/';
+   }catch(e){msg.className='err';msg.textContent=e.message;btn.disabled=false;btn.textContent='Создать аккаунт'}
+ });
+})();
+</script></body></html>
