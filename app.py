@@ -1,4 +1,4 @@
-import os, sqlite3, secrets, hashlib, hmac, json
+import os, sqlite3, secrets, hashlib, hmac, json, io
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -6,6 +6,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from PIL import Image, ImageOps
 
 BASE=Path(__file__).parent
 DB=BASE/"app.db"
@@ -214,9 +215,16 @@ async def add_product(
     u=user(authorization)
     url=None
     if photo and photo.filename:
-        ext=Path(photo.filename).suffix or ".jpg"
-        fn=secrets.token_hex(8)+ext
-        (UPLOADS/fn).write_bytes(await photo.read())
+        raw=await photo.read()
+        fn=secrets.token_hex(8)+".jpg"
+        path=UPLOADS/fn
+        try:
+            img=Image.open(io.BytesIO(raw))
+            img=ImageOps.exif_transpose(img).convert("RGB")
+            img.thumbnail((1800,1800))
+            img.save(path,"JPEG",quality=90,optimize=True)
+        except Exception:
+            path.write_bytes(raw)
         url="/uploads/"+fn
     c=con()
     cur=c.execute(
