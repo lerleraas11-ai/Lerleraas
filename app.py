@@ -9,8 +9,10 @@ from pydantic import BaseModel
 from PIL import Image, ImageOps
 
 BASE=Path(__file__).parent
-DB=BASE/"app.db"
-UPLOADS=BASE/"uploads"; UPLOADS.mkdir(exist_ok=True)
+DB=Path(os.getenv("DATABASE_PATH", str(BASE/"app.db")))
+DB.parent.mkdir(parents=True, exist_ok=True)
+UPLOADS=Path(os.getenv("UPLOADS_PATH", str(BASE/"uploads")))
+UPLOADS.mkdir(parents=True, exist_ok=True)
 
 app=FastAPI(title="Бизнес из дома — помощник продаж")
 app.mount("/static",StaticFiles(directory=BASE/"static"),name="static")
