@@ -12,13 +12,16 @@ BASE=Path(__file__).parent
 DB=BASE/"app.db"
 UPLOADS=BASE/"uploads"; UPLOADS.mkdir(exist_ok=True)
 
-app=FastAPI(title="Бизнес из дома — Авито-помощник")
+app=FastAPI(title="Бизнес из дома — помощник продаж")
 app.mount("/static",StaticFiles(directory=BASE/"static"),name="static")
 app.mount("/uploads",StaticFiles(directory=UPLOADS),name="uploads")
 
 def con():
-    c=sqlite3.connect(DB)
+    c=sqlite3.connect(DB, timeout=30)
     c.row_factory=sqlite3.Row
+    c.execute("PRAGMA busy_timeout=30000")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
     return c
 
 def init():
@@ -332,12 +335,12 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         u=c.execute("SELECT * FROM users WHERE telegram_link_token=?",(link_token,)).fetchone()
         if not u:
             c.close()
-            telegram_send(chat_id,"Ссылка устарела. Открой Авито-помощник и нажми «Подключить Telegram» ещё раз.")
+            telegram_send(chat_id,"Ссылка устарела. Открой помощник продаж и нажми «Подключить Telegram» ещё раз.")
             return {"ok":True}
         c.execute("UPDATE users SET telegram_user_id=?,telegram_chat_id=?,telegram_link_token=NULL WHERE id=?",(tg_user_id,chat_id,u["id"]))
         c.commit(); c.close()
         event(u["id"],"TELEGRAM_CONNECTED")
-        telegram_send(chat_id,"Готово 💜 Telegram связан с твоим Авито-помощником. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
+        telegram_send(chat_id,"Готово 💜 Telegram связан с твоим помощник продажом. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
         return {"ok":True}
     photos=msg.get("photo") or []
     if photos:
@@ -345,13 +348,14 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
         if not u:
             c.close()
-            telegram_send(chat_id,"Сначала свяжи Telegram с аккаунтом через кнопку в Авито-помощнике 💜")
+            telegram_send(chat_id,"Сначала свяжи Telegram с аккаунтом через кнопку в помощник продаже 💜")
             return {"ok":True}
         url=telegram_download_photo(photos[-1]["file_id"])
         caption=(msg.get("caption") or "").strip()
         name=caption.splitlines()[0][:120] if caption else "Товар из Telegram"
         media_group_id=msg.get("media_group_id")
         pid=None
+        created_new=False
         if media_group_id:
             grp=c.execute("SELECT * FROM telegram_groups WHERE media_group_id=?",(str(media_group_id),)).fetchone()
             if grp:
@@ -361,7 +365,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                 try: arr=json.loads(row["photos_json"] or "[]")
                 except Exception: pass
                 if not arr and row["photo_url"]: arr=[row["photo_url"]]
-                arr.append(url)
+                if url not in arr: arr.append(url)
                 c.execute("UPDATE products SET photos_json=? WHERE id=?",(json.dumps(arr),pid))
             else:
                 arr=[url]
@@ -369,16 +373,18 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                                  VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
                 pid=cur.lastrowid
                 c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id) VALUES(?,?,?)",(str(media_group_id),u["id"],pid))
-                event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
+                created_new=True
         else:
             cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
                              VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps([url]),0,"draft","telegram",str(msg.get("message_id",""))))
             pid=cur.lastrowid
-            event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
+            created_new=True
         c.commit(); c.close()
-        telegram_send(chat_id,"Фото получила 💜 Товар уже появился в Авито-помощнике. Открой приложение — там можно разобрать его с AI и сделать объявление.")
+        if created_new:
+            event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
+        telegram_send(chat_id,"Фото получила 💜 Товар уже появился в помощнике продаж. Открой приложение — там можно разобрать его с AI и сделать объявление.")
         return {"ok":True}
-    telegram_send(chat_id,"Пришли фото товара или альбом из нескольких фото. Я перенесу их в Авито-помощник 💜")
+    telegram_send(chat_id,"Пришли фото товара или альбом из нескольких фото. Я перенесу их в помощник продаж 💜")
     return {"ok":True}
 
 @app.post("/api/products")
