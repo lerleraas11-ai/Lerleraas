@@ -122,7 +122,7 @@ function render(){
     ?'Уже '+STATE.stats.sold+' продаж на '+money(STATE.stats.earned)+'. Не усложняй — повторяй то, что работает.'
     :(STATE.products.length?'Товар уже в базе. Доведи его до публикации и первой продажи.':'Добавь первый товар — и начинаем.');
   productsList.innerHTML=STATE.products.length
-    ?STATE.products.map(p=>'<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb"></div>')+'<div class="grow"><b>'+p.name+'</b><div class="muted">'+(p.category||'Без категории')+' · '+(p.status==='sold'?'Продан '+money(p.sold_price):money(p.price))+'</div></div><span class="tag">'+p.status+'</span></div>').join('')
+    ?STATE.products.map(p=>{const st=p.status==='draft'?'Черновик':p.status==='listed'?'Выставлен':'Продан';return '<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb"></div>')+'<div class="grow"><b>'+p.name+'</b><div class="muted">'+(p.category||'Без категории')+' · '+(p.status==='sold'?'Продан '+money(p.sold_price):money(p.price))+'</div></div><span class="tag">'+st+'</span></div>'}).join('')
     :'<div class="card"><b>Здесь появятся твои товары</b><div class="muted">Добавь первый — дальше помощник подскажет.</div></div>';
 }
 
@@ -146,7 +146,7 @@ async function openProduct(id){
   const p=await api('/api/products/'+id);
   productSheet.innerHTML='<div class="row"><h2>'+p.name+'</h2><span class="link" onclick="closeM(\'productModal\')">Закрыть</span></div>'
     +'<div class="preview">'+(p.photo_url?'<img src="'+p.photo_url+'">':'Фото')+'</div>'
-    +'<div class="card"><div>Цена: <b>'+money(p.price)+'</b></div><div class="muted">Статус: '+p.status+'</div></div>'
+    +'<div class="card"><div>Цена: <b>'+money(p.status==='sold'?p.sold_price:p.price)+'</b></div><div class="muted">Статус: '+(p.status==='draft'?'Черновик':p.status==='listed'?'Выставлен':'Продан')+'</div></div>'
     +'<div class="grid"><button class="btn white" onclick="analyze('+id+')">✨ Разобрать AI</button><button class="btn white" onclick="listing('+id+')">✍️ Объявление</button></div>'
     +'<div id="action" style="margin-top:10px"></div>'
     +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила на Avito</button>':'')
