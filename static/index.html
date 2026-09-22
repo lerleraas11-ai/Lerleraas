@@ -88,11 +88,11 @@ async function api(url,opt={}){
 
 function toggleAuth(){
   REGISTER=!REGISTER;
-  authTitle.textContent=REGISTER?'Регистрация':'Войти';
-  authBtn.textContent=REGISTER?'Создать аккаунт':'Войти';
-  nameWrap.classList.toggle('hide',!REGISTER);
-  goalWrap.classList.toggle('hide',!REGISTER);
-  switchText.textContent=REGISTER?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация';
+  document.getElementById('authTitle').textContent=REGISTER?'Регистрация':'Войти';
+  document.getElementById('authBtn').textContent=REGISTER?'Создать аккаунт':'Войти';
+  document.getElementById('nameWrap').classList.toggle('hide',!REGISTER);
+  document.getElementById('goalWrap').classList.toggle('hide',!REGISTER);
+  document.getElementById('switchText').textContent=REGISTER?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация';
 }
 
 async function doAuth(){
@@ -144,7 +144,7 @@ async function createProduct(){
 
 async function openProduct(id){
   const p=await api('/api/products/'+id);
-  productSheet.innerHTML='<div class="row"><h2>'+p.name+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
+  productSheet.innerHTML='<div class="row"><h2>'+p.name+'</h2><span class="link" onclick="closeM(\'productModal\')">Закрыть</span></div>'
     +'<div class="preview">'+(p.photo_url?'<img src="'+p.photo_url+'">':'Фото')+'</div>'
     +'<div class="card"><div>Цена: <b>'+money(p.price)+'</b></div><div class="muted">Статус: '+p.status+'</div></div>'
     +'<div class="grid"><button class="btn white" onclick="analyze('+id+')">✨ Разобрать AI</button><button class="btn white" onclick="listing('+id+')">✍️ Объявление</button></div>'
