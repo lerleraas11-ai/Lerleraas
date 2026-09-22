@@ -71,9 +71,13 @@ async function api(url,opt={}){
   opt.headers=opt.headers||{};
   if(TOKEN)opt.headers.Authorization='Bearer '+TOKEN;
   const r=await fetch(url,opt);
-  if(r.status===401){TOKEN='';localStorage.removeItem('bizhome_token');showAuth();throw new Error('Нужно войти')}
-  if(!r.ok)throw new Error((await r.json().catch(()=>({detail:'Ошибка'}))).detail||'Ошибка');
-  return r.json();
+  const data=await r.json().catch(()=>({detail:'Ошибка'}));
+  if(r.status===401 && url!='/api/login'){
+    TOKEN='';localStorage.removeItem('bizhome_token');showAuth();
+    throw new Error(data.detail||'Нужно войти');
+  }
+  if(!r.ok)throw new Error(data.detail||'Ошибка');
+  return data;
 }
 
 function toggleAuth(){
@@ -87,10 +91,18 @@ function toggleAuth(){
 
 async function doAuth(){
   try{
-    const body=REGISTER?{name:rname.value,email:email.value,password:pass.value,goal:+rgoal.value}:{email:email.value,password:pass.value};
+    const body=REGISTER?{
+      name:document.getElementById('rname').value,
+      email:document.getElementById('email').value,
+      password:document.getElementById('pass').value,
+      goal:+document.getElementById('rgoal').value
+    }:{
+      email:document.getElementById('email').value,
+      password:document.getElementById('pass').value
+    };
     const r=await api(REGISTER?'/api/register':'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     TOKEN=r.token;localStorage.setItem('bizhome_token',TOKEN);await boot();
-  }catch(e){authErr.textContent=e.message}
+  }catch(e){document.getElementById('authErr').textContent=e.message}
 }
 
 function showAuth(){auth.classList.remove('hide');main.classList.add('hide')}
