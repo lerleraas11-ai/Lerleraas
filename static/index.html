@@ -33,11 +33,12 @@
   <section id="home" class="screen on">
     <div class="card"><div class="muted">Твоя цель на месяц</div><div id="goal" class="big">—</div><div class="muted"><span id="earned">—</span> заработано · <span id="sold">0</span> продаж</div></div>
     <div class="card"><b>💜 Лера и Вика рядом</b><div id="tip" class="muted" style="margin-top:6px">Добавь первый товар — и начинаем.</div></div>
-    <button class="btn lime full" onclick="openAdd()">+ Добавить товар</button>
+    <button class="btn lime full" id="tgMainBtn" onclick="connectTelegram()">Подключить Telegram</button>
+    <div id="tgHint" class="muted" style="margin-top:9px;text-align:center">После подключения просто отправляй фото нашему боту — товар сам появится здесь.</div>
     <div class="grid" style="margin-top:10px"><div class="metric"><span class="muted">Касса</span><b id="cash">—</b></div><div class="metric"><span class="muted">Товаров</span><b id="count">—</b></div></div>
   </section>
 
-  <section id="products" class="screen"><h2>Мои товары</h2><div id="productsList"></div></section>
+  <section id="products" class="screen"><div class="row"><h2>Мои товары</h2><button class="btn white" onclick="refreshProducts()">Обновить</button></div><div id="productsList"></div></section>
 
   <section id="ai" class="screen">
     <h2>AI-помощник</h2><div id="chat"></div>
@@ -53,17 +54,6 @@
     <button data-id="profile" onclick="screen('profile')">◯<br>Профиль</button>
   </nav>
 </div>
-
-<div id="add" class="modal"><div class="sheet">
-  <div class="row"><h2>Добавить товар</h2><span class="link" onclick="closeM('add')">Закрыть</span></div>
-  <div id="prev" class="preview">Фото товара</div>
-  <div class="field"><input id="photo" type="file" accept="image/*" onchange="preview(event)"></div>
-  <div class="field"><input id="pname" placeholder="Что это?"></div>
-  <div class="field"><input id="pcat" placeholder="Категория"></div>
-  <div class="field"><select id="pcond"><option>Новое</option><option>Отличное</option><option>Б/у</option><option>Есть дефекты</option></select></div>
-  <div class="field"><input id="pprice" type="number" placeholder="Цена"></div>
-  <button class="btn lime full" onclick="createProduct()">Сохранить товар</button>
-</div></div>
 
 <div id="productModal" class="modal"><div id="productSheet" class="sheet"></div></div>
 
@@ -107,7 +97,7 @@ function showAuth(){auth.classList.remove('hide');main.classList.add('hide')}
 
 async function boot(){
   if(!TOKEN){showAuth();return}
-  try{STATE=await api('/api/state');auth.classList.add('hide');main.classList.remove('hide');render()}
+  try{STATE=await api('/api/state');auth.classList.add('hide');main.classList.remove('hide');render();await refreshTelegramStatus()}
   catch(e){showAuth()}
 }
 
@@ -120,10 +110,10 @@ function render(){
   count.textContent=STATE.products.length;
   tip.textContent=STATE.stats.sold
     ?'Уже '+STATE.stats.sold+' продаж на '+money(STATE.stats.earned)+'. Не усложняй — повторяй то, что работает.'
-    :(STATE.products.length?'Товар уже в базе. Доведи его до публикации и первой продажи.':'Добавь первый товар — и начинаем.');
+    :(STATE.products.length?'Товар уже в базе. Доведи его до публикации и первой продажи.':'Подключи Telegram и отправь боту первый товар — дальше всё появится здесь само.');
   productsList.innerHTML=STATE.products.length
     ?STATE.products.map(p=>{const st=p.status==='draft'?'Черновик':p.status==='listed'?'Выставлен':'Продан';return '<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb"></div>')+'<div class="grow"><b>'+p.name+'</b><div class="muted">'+(p.category||'Без категории')+' · '+(p.status==='sold'?'Продан '+money(p.sold_price):money(p.price))+'</div></div><span class="tag">'+st+'</span></div>'}).join('')
-    :'<div class="card"><b>Здесь появятся твои товары</b><div class="muted">Добавь первый — дальше помощник подскажет.</div></div>';
+    :'<div class="card"><b>Здесь появятся товары из Telegram</b><div class="muted">Подключи Telegram и отправь боту фото товара. Ничего повторно загружать не нужно.</div></div>';
 }
 
 function screen(id){
@@ -131,17 +121,29 @@ function screen(id){
   document.getElementById(id).classList.add('on');
   document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.id===id));
 }
-function openAdd(){add.classList.add('on')}
-function closeM(id){document.getElementById(id).classList.remove('on')}
-function preview(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>prev.innerHTML='<img src="'+r.result+'">';r.readAsDataURL(f)}
-
-async function createProduct(){
-  const fd=new FormData();
-  fd.append('name',pname.value||'Новый товар');fd.append('category',pcat.value);fd.append('condition',pcond.value);fd.append('price',pprice.value||0);
-  if(photo.files[0])fd.append('photo',photo.files[0]);
-  await api('/api/products',{method:'POST',body:fd});closeM('add');await boot();screen('products');
+async function refreshTelegramStatus(){
+  try{
+    const s=await api('/api/telegram/status');
+    const b=document.getElementById('tgMainBtn');
+    const h=document.getElementById('tgHint');
+    if(s.connected){
+      b.textContent='Открыть Telegram-бота';
+      b.dataset.connected='1';
+      h.textContent='Telegram подключён 💜 Отправляй боту фото или альбом — товар автоматически появится в «Мои товары».';
+    }else{
+      b.textContent='Подключить Telegram';
+      b.dataset.connected='0';
+      h.textContent='Один раз свяжи Telegram с аккаунтом. После этого фотографии больше не нужно загружать сюда вручную.';
+    }
+  }catch(e){}
 }
-
+async function connectTelegram(){
+  try{
+    const r=await api('/api/telegram/link',{method:'POST'});
+    location.href=r.url;
+  }catch(e){alert(e.message)}
+}
+async function refreshProducts(){await boot();screen('products')}
 async function openProduct(id){
   const p=await api('/api/products/'+id);
   productSheet.innerHTML='<div class="row"><h2>'+p.name+'</h2><span class="link" onclick="closeM(\'productModal\')">Закрыть</span></div>'
@@ -182,6 +184,7 @@ async function send(){
 }
 function renderChat(){chat.innerHTML=CHAT.map(x=>'<div class="bubble '+x.r+'">'+x.t+'</div>').join('')}
 function logout(){TOKEN='';localStorage.removeItem('bizhome_token');showAuth()}
+setInterval(async()=>{if(TOKEN&&document.getElementById('main')&&!main.classList.contains('hide')){try{const s=await api('/api/state');if(STATE&&s.products.length!==STATE.products.length){STATE=s;render()}}catch(e){}}},8000);
 boot();
 </script>
 </body>
