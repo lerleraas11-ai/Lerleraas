@@ -338,7 +338,24 @@ def chat(d:Chat,authorization:Optional[str]=Header(None)):
         "Контекст: "+json.dumps(context,ensure_ascii=False)+"\nВопрос: "+d.text
     )
     if not result:
-        result=("Продаж пока нет. Добавь товар и доведи его до продажи — после этого я начну использовать твою историю."
-                if not sold else
-                "У тебя уже "+str(len(sold))+" продаж. Я вижу их историю и могу помогать сравнивать товары.")
+        q=d.text.lower()
+        if not sold:
+            result="Продаж пока нет. Добавь товар и доведи его до продажи — после этого я начну использовать твою историю."
+        else:
+            stop={"что","мы","уже","продавали","похожее","похожий","похожая","похожие","сколько","как","моя","мой","моё","мои","товар","за","и","на"}
+            words=[w.strip(".,!?;:()[]{}\"'").lower() for w in q.split()]
+            words=[w for w in words if len(w)>=4 and w not in stop]
+            matches=[]
+            for s in sold:
+                hay=((s.get("name") or "")+" "+(s.get("category") or "")).lower()
+                if any(w in hay for w in words):
+                    matches.append(s)
+            chosen=matches if matches else sold[:3]
+            parts=[]
+            for s in chosen[:3]:
+                parts.append((s.get("name") or "Товар")+" — "+str(int(s.get("sold_price") or 0))+" ₽")
+            if matches:
+                result="Да, у тебя уже были похожие продажи: "+("; ".join(parts))+". Это реальные цены из твоей истории."
+            else:
+                result="В истории у тебя сейчас: "+("; ".join(parts))+". Если добавишь похожий товар, я смогу опираться на эти продажи."
     return {"text":result}
