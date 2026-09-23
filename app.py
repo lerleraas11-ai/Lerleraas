@@ -926,7 +926,6 @@ def chat(d:Chat,authorization:Optional[str]=Header(None)):
         "SELECT name,category,price,status FROM products WHERE user_id=? AND status!='sold' ORDER BY id DESC LIMIT 12",
         (u["id"],)
     ).fetchall()]
-    c.close()
     cat_rows=[dict(x) for x in c.execute(
         """SELECT category,
                   SUM(CASE WHEN status='sold' THEN 1 ELSE 0 END) sold_count,
@@ -935,6 +934,7 @@ def chat(d:Chat,authorization:Optional[str]=Header(None)):
            FROM products WHERE user_id=? GROUP BY category ORDER BY sold_count DESC LIMIT 10""",
         (u["id"],)
     ).fetchall()]
+    c.close()
     context={"goal":u["goal"],"sales":sold,"active":active,"category_stats":cat_rows}
     result=ask_ai(
         KOLYA_PROMPT+"\nТы отвечаешь как личный помощник именно этого продавца. Используй его историю товаров и продаж, не придумывай факты.",
