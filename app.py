@@ -1,4 +1,4 @@
-import os, sqlite3, secrets, hashlib, hmac, json, io, urllib.request, urllib.parse
+import os, sqlite3, secrets, hashlib, hmac, json, io, urllib.request, urllib.parse, time, threading
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image, ImageOps
+from product_ai import analyze_product_ai
 
 BASE=Path(__file__).parent
 DB=Path(os.getenv("DATABASE_PATH", str(BASE/"app.db")))
@@ -102,7 +103,10 @@ def init():
       ("telegram_message_id","ALTER TABLE products ADD COLUMN telegram_message_id TEXT"),
       ("source_type","ALTER TABLE products ADD COLUMN source_type TEXT DEFAULT 'home'"),
       ("sale_expenses","ALTER TABLE products ADD COLUMN sale_expenses REAL DEFAULT 0"),
-      ("listed_at","ALTER TABLE products ADD COLUMN listed_at TEXT")
+      ("listed_at","ALTER TABLE products ADD COLUMN listed_at TEXT"),
+      ("ai_json","ALTER TABLE products ADD COLUMN ai_json TEXT DEFAULT '{}'"),
+      ("ai_status","ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'waiting'"),
+      ("ai_updated_at","ALTER TABLE products ADD COLUMN ai_updated_at TEXT")
     ]:
         if col not in pcols: c.execute(ddl)
     c.commit()
