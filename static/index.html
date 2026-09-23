@@ -349,20 +349,26 @@ function switchPhoto(src,el){
   document.querySelectorAll('.gallery img').forEach(x=>x.classList.remove('on'));if(el)el.classList.add('on');
 }
 function resaleBlock(p,id){
-  if((p.source_type||'')!=='buy')return '';
+  const source=p.source_type||'';
+  if(!['buy','business','friends'].includes(source))return '';
   const buy=Number(p.buy_price||0),sale=Number(p.price||0),profit=sale-buy,margin=buy?profit/buy*100:0;
-  let h='<div class="card"><b>🛒 Закупка под перепродажу</b>';
+  const cfg={
+    buy:{title:'🛒 Закупка под перепродажу',label:'Закуп',ask:'За сколько купила товар?',empty:'Запиши закупочную цену — Коля начнёт считать потенциальную и реальную прибыль.'},
+    business:{title:'🏪 Остатки бизнеса',label:'Себестоимость',ask:'Какая себестоимость товара?',empty:'Если знаешь себестоимость, запиши её — Коля покажет, сколько реально останется после продажи.'},
+    friends:{title:'👥 Товар знакомых',label:'Владельцу',ask:'Сколько нужно отдать владельцу после продажи?',empty:'Запиши сумму, которую нужно вернуть владельцу — остальное Коля посчитает как твой результат.'}
+  }[source];
+  let h='<div class="card"><b>'+cfg.title+'</b>';
   if(buy>0){
-    h+='<div class="grid2" style="margin-top:9px"><div class="aiCell"><b>Закуп</b>'+money(buy)+'</div><div class="aiCell"><b>Плановая цена</b>'+(sale?money(sale):'ещё нет')+'</div></div>';
-    if(sale>0)h+='<div style="margin-top:9px"><b>'+(profit>=0?'Потенциально останется ':'Ниже закупки на ')+money(Math.abs(profit))+'</b>'+(profit>=0?'<div class="muted">Это примерно '+Math.round(margin)+'% к закупке до дополнительных расходов.</div>':'<div class="muted">Проверь цену перед публикацией.</div>')+'</div>';
-    h+='<button class="btn ghost full" style="margin-top:10px" onclick="editPurchaseCost('+id+','+buy+')">Изменить закуп</button>';
+    h+='<div class="grid2" style="margin-top:9px"><div class="aiCell"><b>'+cfg.label+'</b>'+money(buy)+'</div><div class="aiCell"><b>Плановая цена</b>'+(sale?money(sale):'ещё нет')+'</div></div>';
+    if(sale>0)h+='<div style="margin-top:9px"><b>'+(profit>=0?'Потенциально останется ':'Не хватает ')+money(Math.abs(profit))+'</b>'+(profit>=0?'<div class="muted">До дополнительных расходов. После продажи посчитаю фактический результат.</div>':'<div class="muted">Текущую цену стоит проверить.</div>')+'</div>';
+    h+='<button class="btn ghost full" style="margin-top:10px" onclick="editPurchaseCost('+id+','+buy+','+JSON.stringify(cfg.ask)+')">Изменить сумму</button>';
   }else{
-    h+='<div class="muted" style="margin-top:6px">Запиши закупочную цену — Коля начнёт считать потенциальную и реальную прибыль.</div><button class="btn lime full" style="margin-top:10px" onclick="editPurchaseCost('+id+',0)">💸 Записать закуп</button>';
+    h+='<div class="muted" style="margin-top:6px">'+cfg.empty+'</div><button class="btn lime full" style="margin-top:10px" onclick="editPurchaseCost('+id+',0,'+JSON.stringify(cfg.ask)+')">💸 Записать сумму</button>';
   }
   return h+'</div>';
 }
-async function editPurchaseCost(id,current){
-  const raw=prompt('За сколько купила товар?',current||'');
+async function editPurchaseCost(id,current,question){
+  const raw=prompt(question||'Укажи сумму',current||'');
   if(raw===null)return;
   const value=Number(String(raw).replace(',','.').replace(/\s/g,''));
   if(!Number.isFinite(value)||value<0)return alert('Укажи сумму цифрами');
@@ -479,7 +485,8 @@ async function boostProduct(id){
 }
 async function saleForm(id){
   const p=await api('/api/products/'+id);
-  action.innerHTML='<div class="card"><b>Запишем продажу</b><div class="field"><input id="sp" type="number" placeholder="За сколько продала?"></div><div class="field"><input id="bp" type="number" value="'+(p.buy_price||'')+'" placeholder="Закупка, если была"></div><div class="field"><input id="ep" type="number" placeholder="Другие расходы, если были"></div><button class="btn lime full" onclick="soldNow('+id+')">Добавить в деньги</button></div>';
+  const costLabel=({buy:'Закупка',business:'Себестоимость',friends:'Сколько отдаём владельцу'}[p.source_type]||'Закупка, если была');
+  action.innerHTML='<div class="card"><b>Запишем продажу</b><div class="field"><input id="sp" type="number" placeholder="За сколько продала?"></div><div class="field"><input id="bp" type="number" value="'+(p.buy_price||'')+'" placeholder="'+costLabel+'"></div><div class="field"><input id="ep" type="number" placeholder="Другие расходы, если были"></div><button class="btn lime full" onclick="soldNow('+id+')">Добавить в деньги</button></div>';
 }
 async function soldNow(id){
   const amount=+sp.value||0,buy=+bp.value||0,expenses=+ep.value||0,profit=amount-buy-expenses;
