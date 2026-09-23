@@ -1081,14 +1081,20 @@ async def add_product(
     price:float=Form(0),
     source_type:str=Form("home"),
     buy_price:float=Form(0),
-    photo:UploadFile|None=File(None)
+    photo:UploadFile|None=File(None),
+    photos:list[UploadFile]|None=File(None)
 ):
     u=user(authorization)
     source_type=source_type if source_type in ("home","lot","buy","business","friends") else "home"
-    url=None
-    photos=[]
+    saved=[]
+    uploads=[]
     if photo and photo.filename:
-        raw=await photo.read()
+        uploads.append(photo)
+    for up in (photos or []):
+        if up and up.filename:
+            uploads.append(up)
+    for up in uploads[:8]:
+        raw=await up.read()
         fn=secrets.token_hex(8)+".jpg"
         path=UPLOADS/fn
         try:
@@ -1098,24 +1104,66 @@ async def add_product(
             img.save(path,"JPEG",quality=90,optimize=True)
         except Exception:
             path.write_bytes(raw)
-        url="/uploads/"+fn
-        photos=[url]
+        saved.append("/uploads/"+fn)
+    url=saved[0] if saved else None
     c=con()
     lot_id=u.get("active_lot_id") if source_type=="lot" else None
     cur=c.execute(
         """INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,buy_price,status,source,source_type,lot_id,ai_status)
            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (u["id"],name.strip() or "Новый товар",category.strip(),condition.strip(),url,json.dumps(photos),
-         max(0,price),max(0,buy_price),"draft","app",source_type,lot_id,"waiting" if url else "done")
+        (u["id"],name.strip() or "Новый товар",category.strip(),condition.strip(),url,json.dumps(saved),
+         max(0,price),max(0,buy_price),"draft","app",source_type,lot_id,"waiting" if saved else "done")
     )
     pid=cur.lastrowid
     c.execute("UPDATE users SET pending_product_id=?,pending_mode='' WHERE id=?",(pid,u["id"]))
     c.commit()
     c.close()
-    event(u["id"],"PRODUCT_CREATED_IN_APP",pid,{"source_type":source_type})
-    if url:
+    event(u["id"],"PRODUCT_CREATED_IN_APP",pid,{"source_type":source_type,"photos":len(saved)})
+    if saved:
         threading.Thread(target=analyze_product_ai,args=(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT),daemon=True).start()
-    return {"id":pid,"analyzing":bool(url)}
+    return {"id":pid,"analyzing":bool(saved),"photos":len(saved)}
+
+@app.post("/api/products/{pid}/photos")
+async def add_product_photos(
+    pid:int,
+    authorization:Optional[str]=Header(None),
+    photos:list[UploadFile]=File(...)
+):
+    u=user(authorization)
+    c=con()
+    p=c.execute("SELECT photos_json,photo_url FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+    if not p:
+        c.close(); raise HTTPException(404,"Товар не найден")
+    arr=[]
+    try: arr=json.loads(p["photos_json"] or "[]")
+    except Exception: arr=[]
+    if not arr and p["photo_url"]:
+        arr=[p["photo_url"]]
+    added=0
+    for up in photos:
+        if not up or not up.filename or len(arr)>=8:
+            continue
+        raw=await up.read()
+        fn=secrets.token_hex(8)+".jpg"
+        path=UPLOADS/fn
+        try:
+            img=Image.open(io.BytesIO(raw))
+            img=ImageOps.exif_transpose(img).convert("RGB")
+            img.thumbnail((1800,1800))
+            img.save(path,"JPEG",quality=90,optimize=True)
+        except Exception:
+            path.write_bytes(raw)
+        arr.append("/uploads/"+fn)
+        added+=1
+    if added:
+        c.execute("UPDATE products SET photos_json=?,photo_url=COALESCE(photo_url,?),ai_status='waiting' WHERE id=? AND user_id=?",
+                  (json.dumps(arr),arr[0] if arr else None,pid,u["id"]))
+        c.commit()
+    c.close()
+    if added:
+        event(u["id"],"PRODUCT_EXTRA_PHOTOS_APP",pid,{"added":added})
+        threading.Thread(target=analyze_product_ai,args=(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT),daemon=True).start()
+    return {"ok":True,"added":added,"total":len(arr),"analyzing":bool(added)}
 
 @app.get("/api/products/{pid}")
 def product(pid:int,authorization:Optional[str]=Header(None)):
