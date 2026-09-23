@@ -478,6 +478,46 @@ def state(authorization:Optional[str]=Header(None)):
           "avg_profit":avg_profit,"avg_days":avg_days
         })
     category_insights.sort(key=lambda x:(x["sold"],x["profit"]),reverse=True)
+    # Короткий план дня: максимум 3 действия, только из реальных данных пользователя.
+    ready_drafts=[p for p in ps if p["status"]=="draft" and p.get("listing_title")]
+    incomplete_drafts=[p for p in ps if p["status"]=="draft" and not p.get("listing_title")]
+    sold_profits=[(p["sold_price"] or 0)-(p["buy_price"] or 0)-(p.get("sale_expenses") or 0) for p in sold]
+    positive_profits=[x for x in sold_profits if x>0]
+    avg_profit_all=(sum(positive_profits)/len(positive_profits)) if positive_profits else 0
+    goal_amount=float(u.get("goal") or 0)
+    goal_left=max(goal_amount-revenue,0)
+    sales_to_goal=int((goal_left+avg_profit_all-1)//avg_profit_all) if goal_left>0 and avg_profit_all>0 else None
+
+    best_categories=[x for x in category_insights if x["sold"]>0]
+    best_category=best_categories[0]["category"] if best_categories else None
+    daily_actions=[]
+    if ready_drafts:
+        pick=next((p for p in ready_drafts if best_category and (p.get("category") or "")==best_category),ready_drafts[0])
+        daily_actions.append({"type":"publish","product_id":pick["id"],"text":"Выставить «"+str(pick.get("name") or "готовый товар")+"» — карточка уже собрана."})
+    elif incomplete_drafts:
+        pick=incomplete_drafts[0]
+        daily_actions.append({"type":"finish","product_id":pick["id"],"text":"Докрутить «"+str(pick.get("name") or "товар")+"» — ему ещё не хватает готовой карточки."})
+    else:
+        daily_actions.append({"type":"add","product_id":None,"text":"Отправить Коле 1–3 новых товара в Telegram."})
+
+    if stale:
+        pick=stale[0]
+        daily_actions.append({"type":"boost","product_id":pick["id"],"text":"Проверить «"+str(pick.get("name") or "товар")+"» — уже "+str(pick["days"])+" дн. в продаже."})
+
+    active_listed=[p for p in ps if p["status"]=="listed"]
+    if len(daily_actions)<3 and active_listed:
+        daily_actions.append({"type":"sales","product_id":active_listed[0]["id"],"text":"Не забыть отметить продажу, если кто-то из активных товаров уже ушёл."})
+    if len(daily_actions)<3 and not ready_drafts and not incomplete_drafts:
+        daily_actions.append({"type":"add","product_id":None,"text":"Добавить ещё один товар — так Коля быстрее накопит твою личную статистику."})
+    daily_actions=daily_actions[:3]
+
+    if sales_to_goal is not None:
+        goal_hint="До цели осталось "+str(int(goal_left))+" ₽ — по твоей средней прибыли это примерно "+str(sales_to_goal)+" продаж(и)."
+    elif goal_left>0:
+        goal_hint="До цели осталось "+str(int(goal_left))+" ₽. После нескольких продаж Коля сможет считать путь точнее."
+    else:
+        goal_hint="Цель уже закрыта 💜 Можно зафиксировать результат и поставить следующую."
+
     try: modes=json.loads(u.get("business_modes") or "[]")
     except Exception: modes=[]
     salary_percent=float(u.get("salary_percent") or 30)
@@ -495,7 +535,8 @@ def state(authorization:Optional[str]=Header(None)):
           "avg":revenue/len(sold) if sold else 0,"counts":counts,"by_source":by_source,
           "salary_taken":taken,"salary_target":salary_target,"salary_available":max(salary_target-taken,0),
           "stale_count":len(stale),"stale_products":stale[:5],
-          "category_insights":category_insights[:8]
+          "category_insights":category_insights[:8],
+          "daily_plan":{"actions":daily_actions,"goal_hint":goal_hint,"best_category":best_category,"sales_to_goal":sales_to_goal}
         }
     }
 
