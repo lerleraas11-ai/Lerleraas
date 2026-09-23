@@ -284,6 +284,7 @@ async function openProduct(id){
   +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
   +aiDetails(ai,p.ai_status)
+  +((ai.needs_clarification?.length||p.user_notes)?'<div class="card"><b>💬 Уточнить Коле</b><div class="muted" style="margin-top:5px">Если по фото что-то не видно — просто допиши факт. Например: «стелька 17 см», «есть коробка», «дефект только на рукаве».</div>'+(p.user_notes?'<div class="tiny" style="margin-top:8px">Уже учтено: '+escapeHtml(p.user_notes)+'</div>':'')+'<div class="row" style="margin-top:10px"><input id="clarifyInput" placeholder="Напиши уточнение"><button class="btn lime" onclick="clarifyProduct('+id+')">Добавить</button></div></div>':'')
   +(p.listing_title?'<div class="card"><div class="row"><b>✍️ Объявление уже готово</b><span class="tag">AI</span></div><div style="font-weight:850;margin-top:10px">'+escapeHtml(p.listing_title)+'</div><div class="muted" style="white-space:pre-wrap;margin-top:8px">'+escapeHtml(p.listing_description||'')+'</div><div class="grid2" style="margin-top:10px"><button class="btn lime" onclick="copyListing('+id+')">📋 Скопировать</button><button class="btn ghost" onclick="listing('+id+')">🔄 Переписать</button></div></div>':'<div class="card muted">Коля ещё собирает объявление по фотографиям.</div>')
   +'<button class="btn white full" onclick="analyze('+id+')">🔄 Пересмотреть все фото</button>'
   +'<div id="action" style="margin-top:10px"></div>'
@@ -294,6 +295,12 @@ async function openProduct(id){
 async function analyze(id){
   action.innerHTML='<div class="card muted">Коля пересматривает все фотографии 👀</div>';
   await api('/api/products/'+id+'/analyze',{method:'POST'});await boot();await openProduct(id);
+}
+async function clarifyProduct(id){
+  const el=document.getElementById('clarifyInput'),text=(el?.value||'').trim();if(!text)return;
+  action.innerHTML='<div class="card muted">Принял. Добавляю факт и пересобираю карточку…</div>';
+  await api('/api/products/'+id+'/clarify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  await boot();await openProduct(id);
 }
 async function listing(id){
   action.innerHTML='<div class="card muted">Переписываю объявление по подтверждённым данным с фото…</div>';
