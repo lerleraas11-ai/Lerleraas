@@ -18,7 +18,7 @@ button,input,select{font:inherit}.app{max-width:480px;margin:auto;min-height:100
 .screen{display:none}.screen.on{display:block}.sectionTitle{font-size:25px;font-weight:900;margin:8px 0 12px}
 .item{display:flex;gap:11px;align-items:center;padding:10px;background:#ffffff0c;border:1px solid #ffffff12;border-radius:18px;margin:9px 0}.thumb{width:72px;height:72px;border-radius:14px;background:#503083;object-fit:cover}.grow{flex:1;min-width:0}.item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tag{font-size:11px;border-radius:99px;padding:5px 8px;background:#7046b5;white-space:nowrap}
 .source{font-size:11px;color:#eadfff}.nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(480px,100%);display:grid;grid-template-columns:repeat(4,1fr);background:#180735f4;border-top:1px solid #ffffff15;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:20}.nav button{border:0;background:none;color:#cdbef0;font-size:11px;padding:3px}.nav button span{font-size:20px;display:block;margin-bottom:2px}.nav button.on{color:var(--lime);font-weight:850}
-.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:50}.modal.on{display:flex}.sheet{width:min(480px,100%);max-height:92vh;overflow:auto;background:#281051;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom))}.preview{aspect-ratio:4/3;border-radius:19px;background:#46267b;overflow:hidden;display:grid;place-items:center;margin:8px 0 14px}.preview img{width:100%;height:100%;object-fit:cover}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}input,select{width:100%;border:1px solid #7652ba;background:#2b1259;color:#fff;border-radius:14px;padding:13px;font-size:16px}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:50}.modal.on{display:flex}.sheet{width:min(480px,100%);max-height:92vh;overflow:auto;background:#281051;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom))}.preview{aspect-ratio:4/3;border-radius:19px;background:#46267b;overflow:hidden;display:grid;place-items:center;margin:8px 0 8px}.preview img{width:100%;height:100%;object-fit:cover}.gallery{display:flex;gap:7px;overflow:auto;margin-bottom:14px}.gallery img{width:58px;height:58px;border-radius:10px;object-fit:cover;border:2px solid transparent}.gallery img.on{border-color:var(--lime)}.aiGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.aiCell{background:#ffffff0b;border-radius:13px;padding:10px}.aiCell b{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.aiList{margin:8px 0 0;padding-left:18px}.aiList li{margin:4px 0}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}input,select{width:100%;border:1px solid #7652ba;background:#2b1259;color:#fff;border-radius:14px;padding:13px;font-size:16px}
 .bubble{padding:12px 14px;border-radius:17px;background:#3c1b73;margin:8px 0;max-width:88%;white-space:pre-wrap}.bubble.me{margin-left:auto;background:#7d4cff}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.quick button{text-align:left;min-height:74px}
 .success{position:fixed;inset:0;background:#17072ff2;z-index:80;display:none;align-items:center;justify-content:center;padding:20px}.success.on{display:flex}.success .card{width:min(420px,100%);text-align:center}.money{font-size:48px;font-weight:950;color:var(--lime)}
 .auth{padding-top:10vh}.auth .card{margin-top:25px}.link{color:var(--lime);font-weight:850;text-decoration:none}.error{color:#ffb4c5;font-size:13px;margin-top:8px}
@@ -240,22 +240,59 @@ async function refreshTelegramStatus(){
   }catch(e){}
 }
 async function connectTelegram(){try{const r=await api('/api/telegram/link',{method:'POST'});location.href=r.url}catch(e){alert(e.message)}}
+function getPhotos(p){
+  try{
+    const a=JSON.parse(p.photos_json||'[]');
+    return a.length?a:(p.photo_url?[p.photo_url]:[]);
+  }catch(e){return p.photo_url?[p.photo_url]:[]}
+}
+function getAI(p){
+  try{return JSON.parse(p.ai_json||'{}')}catch(e){return {}}
+}
+function switchPhoto(src,el){
+  const main=document.getElementById('mainProductPhoto');if(main)main.src=src;
+  document.querySelectorAll('.gallery img').forEach(x=>x.classList.remove('on'));if(el)el.classList.add('on');
+}
+function aiDetails(ai,status){
+  if(status==='thinking')return '<div class="card"><b>🤖 Коля сейчас смотрит фотографии…</b><div class="muted">Название, детали и ориентир цены подтянутся сами.</div></div>';
+  if(!ai||!Object.keys(ai).length)return '<div class="card"><b>🤖 Коля ещё не разобрал товар</b><div class="muted">Если фото только что пришли из Telegram — дай мне немного времени. Можно запустить разбор ещё раз.</div></div>';
+  const cells=[];
+  [['Бренд',ai.brand],['Модель',ai.model],['Цвет',ai.color],['Материал',ai.material],['Размер',ai.size],['Состояние',ai.condition]].forEach(x=>{if(x[1])cells.push('<div class="aiCell"><b>'+x[0]+'</b>'+escapeHtml(x[1])+'</div>')});
+  const lo=Number(ai.suggested_price_low||0),hi=Number(ai.suggested_price_high||0);
+  let h='<div class="card"><b>🤖 Что Коля увидел по фото</b>';
+  if(ai.buyer_value)h+='<div style="margin-top:7px">'+escapeHtml(ai.buyer_value)+'</div>';
+  if(cells.length)h+='<div class="aiGrid">'+cells.join('')+'</div>';
+  if(lo||hi)h+='<hr><b>💰 Ориентир цены: '+money(lo||hi)+(hi&&hi!==lo?' – '+money(hi):'')+'</b><div class="muted">'+escapeHtml(ai.price_note||'Предварительный ориентир')+'</div>';
+  if(ai.visible_details?.length)h+='<hr><b>Что видно</b><ul class="aiList">'+ai.visible_details.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
+  if(ai.defects?.length)h+='<hr><b>Что заметил по состоянию</b><ul class="aiList">'+ai.defects.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
+  if(ai.included?.length)h+='<hr><b>Что входит</b><ul class="aiList">'+ai.included.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
+  if(ai.needs_clarification?.length)h+='<hr><b>❓ Что по фото не узнать</b><ul class="aiList">'+ai.needs_clarification.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
+  if(ai.photo_advice)h+='<hr><b>📸 По фото</b><div class="muted">'+escapeHtml(ai.photo_advice)+'</div>';
+  if(ai.next_action)h+='<hr><b>Что делаем сейчас</b><div>'+escapeHtml(ai.next_action)+'</div>';
+  return h+'</div>';
+}
 async function openProduct(id){
-  const p=await api('/api/products/'+id),src=sourceName(p.source_type||'home'),price=p.status==='sold'?p.sold_price:p.price;
+  let p=await api('/api/products/'+id);
+  if((!p.ai_json||p.ai_json==='{}'||p.ai_status==='waiting')&&p.photo_url){
+    try{await api('/api/products/'+id+'/analyze',{method:'POST'});p=await api('/api/products/'+id)}catch(e){}
+  }
+  const src=sourceName(p.source_type||'home'),price=p.status==='sold'?p.sold_price:p.price,photos=getPhotos(p),ai=getAI(p);
+  const mainPhoto=photos[0]||'';
+  const gallery=photos.length>1?'<div class="gallery">'+photos.map((x,i)=>'<img class="'+(i===0?'on':'')+'" src="'+x+'" onclick="switchPhoto('+JSON.stringify(x)+',this)">').join('')+'</div>':'';
   productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
-  +'<div class="preview">'+(p.photo_url?'<img src="'+p.photo_url+'">':'Фото товара')+'</div>'
+  +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
-  +'<div class="grid2"><button class="btn white" onclick="analyze('+id+')">🤖 Разобрать с Колей</button><button class="btn white" onclick="listing('+id+')">✍️ Сделать объявление</button></div>'
+  +aiDetails(ai,p.ai_status)
+  +'<div class="grid2"><button class="btn white" onclick="analyze('+id+')">🔄 Пересмотреть фото</button><button class="btn white" onclick="listing('+id+')">✍️ Сделать объявление</button></div>'
   +'<div id="action" style="margin-top:10px"></div>'
-  +(p.listing_title?'<div class="card"><b>Объявление уже готово</b><div class="muted">'+escapeHtml(p.listing_title)+'</div><button class="btn ghost full" style="margin-top:9px" onclick="copyListing('+id+')">📋 Скопировать</button></div>':'')
+  +(p.listing_title?'<div class="card"><b>Объявление уже готово</b><div class="muted">'+escapeHtml(p.listing_title)+'</div><div class="muted" style="white-space:pre-wrap;margin-top:7px">'+escapeHtml(p.listing_description||'')+'</div><button class="btn ghost full" style="margin-top:9px" onclick="copyListing('+id+')">📋 Скопировать всё</button></div>':'')
   +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила объявление</button>':'')
   +(p.status==='listed'?'<button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
   productModal.classList.add('on');
 }
 async function analyze(id){
-  action.innerHTML='<div class="card muted">Коля смотрит товар 👀</div>';
-  const r=await api('/api/products/'+id+'/analyze',{method:'POST'});
-  action.innerHTML='<div class="card" style="white-space:pre-wrap">'+escapeHtml(r.text)+'</div>';await boot();
+  action.innerHTML='<div class="card muted">Коля пересматривает все фотографии 👀</div>';
+  await api('/api/products/'+id+'/analyze',{method:'POST'});await boot();await openProduct(id);
 }
 async function listing(id){
   action.innerHTML='<div class="card muted">Докручиваю объявление…</div>';
