@@ -521,6 +521,24 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         msg=cb.get("message") or {}
         chat_id=str((msg.get("chat") or {}).get("id",""))
         tg_user_id=str((cb.get("from") or {}).get("id",""))
+        if data=="product:attach":
+            c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+            if u and u["pending_product_id"]:
+                c.execute("UPDATE users SET pending_mode='attach' WHERE id=?",(u["id"],)); c.commit()
+                p=c.execute("SELECT name FROM products WHERE id=? AND user_id=?",(u["pending_product_id"],u["id"])).fetchone()
+                c.close()
+                telegram_send(chat_id,"Да 💜 Досылай фото к товару «"+str((p["name"] if p else "товар"))+"». Можно одним фото или альбомом. Я добавлю их в эту же карточку и пересмотрю всё заново.")
+            else:
+                c.close()
+                telegram_send(chat_id,"Сначала пришли основной товар, потом сможем дослать детали 💜")
+            return {"ok":True}
+        if data=="product:new":
+            c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+            if u:
+                c.execute("UPDATE users SET pending_product_id=NULL,pending_mode='' WHERE id=?",(u["id"],)); c.commit()
+            c.close()
+            telegram_send(chat_id,"Готово. Следующее фото будет новым товаром 💜")
+            return {"ok":True}
         if data.startswith("source:"):
             source=data.split(":",1)[1]
             labels={"home":"🏠 Дом","lot":"📦 Лоты","buy":"🛒 Закупка","business":"🏪 Остатки","friends":"👥 Знакомые"}
@@ -552,6 +570,13 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         c.commit(); c.close()
         event(u["id"],"TELEGRAM_CONNECTED")
         telegram_send(chat_id,"Готово 💜 Я Коля AI. Сначала скажи, откуда сейчас будем разбирать товары:",source_keyboard())
+        return {"ok":True}
+    if text in ("/new","Новый товар","новый товар"):
+        c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+        if u:
+            c.execute("UPDATE users SET pending_product_id=NULL,pending_mode='' WHERE id=?",(u["id"],)); c.commit()
+        c.close()
+        telegram_send(chat_id,"Следующее фото считаю новым товаром 💜")
         return {"ok":True}
     if text in ("/source","Источник","источник"):
         c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone(); c.close()
