@@ -93,7 +93,8 @@ def init():
       ("default_source","ALTER TABLE users ADD COLUMN default_source TEXT DEFAULT 'home'"),
       ("business_modes","ALTER TABLE users ADD COLUMN business_modes TEXT DEFAULT '[]'"),
       ("salary_percent","ALTER TABLE users ADD COLUMN salary_percent REAL DEFAULT 30"),
-      ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''")
+      ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''"),
+      ("pending_product_id","ALTER TABLE users ADD COLUMN pending_product_id INTEGER")
     ]:
         if col not in ucols: c.execute(ddl)
     pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
@@ -106,7 +107,8 @@ def init():
       ("listed_at","ALTER TABLE products ADD COLUMN listed_at TEXT"),
       ("ai_json","ALTER TABLE products ADD COLUMN ai_json TEXT DEFAULT '{}'"),
       ("ai_status","ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'waiting'"),
-      ("ai_updated_at","ALTER TABLE products ADD COLUMN ai_updated_at TEXT")
+      ("ai_updated_at","ALTER TABLE products ADD COLUMN ai_updated_at TEXT"),
+      ("user_notes","ALTER TABLE products ADD COLUMN user_notes TEXT DEFAULT ''")
     ]:
         if col not in pcols: c.execute(ddl)
     gcols={r["name"] for r in c.execute("PRAGMA table_info(telegram_groups)").fetchall()}
@@ -285,10 +287,17 @@ def ai_done_message(data):
         lo=hi=0
     price=("\nОриентир: "+str(int(lo or hi))+"–"+str(int(hi or lo))+" ₽") if (lo or hi) else ""
     value=str(data.get("buyer_value") or "").strip()
-    return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+"\n\nЯ уже собрал карточку и готовое объявление 💜 Открой приложение — останется проверить и скопировать."
+    missing=data.get("needs_clarification") or []
+    tail="\n\nЯ уже собрал карточку и готовое объявление 💜"
+    if missing:
+        tail+="\n\nМне не хватает пары фактов:\n• "+"\n• ".join([str(x) for x in missing[:3]])+"\n\nОтветь мне одним сообщением — я сам обновлю карточку и объявление."
+    else:
+        tail+=" Открой приложение — останется проверить и скопировать."
+    return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+tail
 
 def analyze_single_background(pid,uid,chat_id):
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
+    c=con(); c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,uid)); c.commit(); c.close()
     telegram_send(chat_id,ai_done_message(data))
 
 def analyze_album_background(media_group_id,pid,uid,chat_id):
@@ -310,6 +319,7 @@ def analyze_album_background(media_group_id,pid,uid,chat_id):
     if not won:
         return
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
+    c=con(); c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,uid)); c.commit(); c.close()
     telegram_send(chat_id,ai_done_message(data))
 
 class Register(BaseModel):
@@ -340,6 +350,9 @@ class ProfileUpdate(BaseModel):
 class SalaryTake(BaseModel):
     amount:float
     note:str=""
+
+class Clarification(BaseModel):
+    text:str
 
 @app.get("/")
 def home():
@@ -534,6 +547,29 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
             telegram_send(chat_id,"Сначала подключи Telegram через приложение 💜")
         return {"ok":True}
 
+    if text and not text.startswith("/"):
+        c=con()
+        u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+        if u and u["pending_product_id"]:
+            pid=int(u["pending_product_id"])
+            p=c.execute("SELECT user_notes,name FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+            if p:
+                old=(p["user_notes"] or "").strip()
+                merged=(old+"\n"+text).strip() if old else text
+                c.execute("UPDATE products SET user_notes=?,ai_status='waiting' WHERE id=?",(merged,pid))
+                c.commit(); c.close()
+                telegram_send(chat_id,"Принял 💜 Добавляю это к товару «"+str(p["name"] or "товар")+"» и пересобираю карточку.")
+                def _clarify():
+                    data=analyze_product_ai(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT)
+                    event(u["id"],"PRODUCT_CLARIFIED",pid,{"text":text})
+                    telegram_send(chat_id,ai_done_message(data))
+                threading.Thread(target=_clarify,daemon=True).start()
+                return {"ok":True}
+        c.close()
+        if u:
+            telegram_send(chat_id,"Не понял, к какому товару это добавить. Сначала пришли фото товара 💜")
+            return {"ok":True}
+
     photos=msg.get("photo") or []
     if photos:
         c=con()
@@ -566,6 +602,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                                  VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
                 pid=cur.lastrowid
                 c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
+                c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,u["id"]))
                 c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id,updated_at,analyzed_at) VALUES(?,?,?,?,0)",(str(media_group_id),u["id"],pid,time.time()))
                 created_new=True
         else:
@@ -573,6 +610,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                              VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps([url]),0,"draft","telegram",str(msg.get("message_id",""))))
             pid=cur.lastrowid
             c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
+            c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,u["id"]))
             created_new=True
         c.commit(); c.close()
         if created_new:
@@ -639,6 +677,26 @@ def analyze(pid:int,authorization:Optional[str]=Header(None)):
     if not data:
         raise HTTPException(404,"Товар не найден")
     return {"data":data,"text":data.get("next_action") or "Готово 💜"}
+
+@app.post("/api/products/{pid}/clarify")
+def clarify_product(pid:int,d:Clarification,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    note=d.text.strip()
+    if not note:
+        raise HTTPException(400,"Напиши уточнение")
+    c=con()
+    p=c.execute("SELECT user_notes FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+    if not p:
+        c.close()
+        raise HTTPException(404,"Товар не найден")
+    old=(p["user_notes"] or "").strip()
+    merged=(old+"\n"+note).strip() if old else note
+    c.execute("UPDATE products SET user_notes=?,ai_status='waiting' WHERE id=? AND user_id=?",(merged,pid,u["id"]))
+    c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,u["id"]))
+    c.commit(); c.close()
+    data=analyze_product_ai(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT)
+    event(u["id"],"PRODUCT_CLARIFIED",pid,{"text":note})
+    return {"ok":True,"data":data}
 
 @app.post("/api/products/{pid}/listing")
 def listing(pid:int,authorization:Optional[str]=Header(None)):
