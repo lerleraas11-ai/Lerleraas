@@ -268,6 +268,7 @@ function aiDetails(ai,status){
   if(ai.included?.length)h+='<hr><b>Что входит</b><ul class="aiList">'+ai.included.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.needs_clarification?.length)h+='<hr><b>❓ Что по фото не узнать</b><ul class="aiList">'+ai.needs_clarification.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.photo_advice)h+='<hr><b>📸 По фото</b><div class="muted">'+escapeHtml(ai.photo_advice)+'</div>';
+  if(ai.missing_photos?.length)h+='<hr><b>📷 Что ещё сфотографировать</b><ul class="aiList">'+ai.missing_photos.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.next_action)h+='<hr><b>Что делаем сейчас</b><div>'+escapeHtml(ai.next_action)+'</div>';
   return h+'</div>';
 }
@@ -283,9 +284,9 @@ async function openProduct(id){
   +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
   +aiDetails(ai,p.ai_status)
-  +'<div class="grid2"><button class="btn white" onclick="analyze('+id+')">🔄 Пересмотреть фото</button><button class="btn white" onclick="listing('+id+')">✍️ Сделать объявление</button></div>'
+  +(p.listing_title?'<div class="card"><div class="row"><b>✍️ Объявление уже готово</b><span class="tag">AI</span></div><div style="font-weight:850;margin-top:10px">'+escapeHtml(p.listing_title)+'</div><div class="muted" style="white-space:pre-wrap;margin-top:8px">'+escapeHtml(p.listing_description||'')+'</div><div class="grid2" style="margin-top:10px"><button class="btn lime" onclick="copyListing('+id+')">📋 Скопировать</button><button class="btn ghost" onclick="listing('+id+')">🔄 Переписать</button></div></div>':'<div class="card muted">Коля ещё собирает объявление по фотографиям.</div>')
+  +'<button class="btn white full" onclick="analyze('+id+')">🔄 Пересмотреть все фото</button>'
   +'<div id="action" style="margin-top:10px"></div>'
-  +(p.listing_title?'<div class="card"><b>Объявление уже готово</b><div class="muted">'+escapeHtml(p.listing_title)+'</div><div class="muted" style="white-space:pre-wrap;margin-top:7px">'+escapeHtml(p.listing_description||'')+'</div><button class="btn ghost full" style="margin-top:9px" onclick="copyListing('+id+')">📋 Скопировать всё</button></div>':'')
   +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила объявление</button>':'')
   +(p.status==='listed'?'<button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
   productModal.classList.add('on');
@@ -295,7 +296,7 @@ async function analyze(id){
   await api('/api/products/'+id+'/analyze',{method:'POST'});await boot();await openProduct(id);
 }
 async function listing(id){
-  action.innerHTML='<div class="card muted">Докручиваю объявление…</div>';
+  action.innerHTML='<div class="card muted">Переписываю объявление по подтверждённым данным с фото…</div>';
   const r=await api('/api/products/'+id+'/listing',{method:'POST'});
   action.innerHTML='<div class="card"><b>'+escapeHtml(r.title)+'</b><div class="muted" style="margin-top:8px;white-space:pre-wrap">'+escapeHtml(r.description)+'</div><button class="btn lime full" style="margin-top:10px" onclick="navigator.clipboard.writeText('+JSON.stringify(r.title+'\\n\\n'+r.description)+')">📋 Скопировать всё</button></div>';
 }
