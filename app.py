@@ -430,6 +430,18 @@ def state(authorization:Optional[str]=Header(None)):
       "listed":sum(1 for p in ps if p["status"]=="listed"),
       "sold":len(sold)
     }
+    stale=[]
+    now_naive=datetime.utcnow()
+    for p in ps:
+        if p["status"]!="listed" or not p.get("listed_at"):
+            continue
+        try:
+            dt=datetime.fromisoformat(str(p["listed_at"]).replace("Z",""))
+            days=max(0,(now_naive-dt).days)
+        except Exception:
+            days=0
+        if days>=7:
+            stale.append({"id":p["id"],"name":p["name"],"days":days,"price":p["price"]})
     by_source={}
     for p in sold:
         key=p.get("source_type") or "home"
@@ -452,7 +464,8 @@ def state(authorization:Optional[str]=Header(None)):
         "stats":{
           "revenue":revenue,"earned":revenue,"profit":profit,"sold":len(sold),
           "avg":revenue/len(sold) if sold else 0,"counts":counts,"by_source":by_source,
-          "salary_taken":taken,"salary_target":salary_target,"salary_available":max(salary_target-taken,0)
+          "salary_taken":taken,"salary_target":salary_target,"salary_available":max(salary_target-taken,0),
+          "stale_count":len(stale),"stale_products":stale[:5]
         }
     }
 
@@ -795,6 +808,58 @@ def listing(pid:int,authorization:Optional[str]=Header(None)):
     c.close()
     event(u["id"],"LISTING_GENERATED",pid)
     return {"title":title,"description":desc}
+
+@app.post("/api/products/{pid}/boost")
+def boost_product(pid:int,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    p=product(pid,authorization)
+    try:
+        ai=json.loads(p.get("ai_json") or "{}")
+    except Exception:
+        ai={}
+    days=0
+    if p.get("listed_at"):
+        try:
+            days=max(0,(datetime.utcnow()-datetime.fromisoformat(str(p["listed_at"]).replace("Z",""))).days)
+        except Exception:
+            days=0
+    c=con()
+    history=[dict(x) for x in c.execute(
+        "SELECT name,category,sold_price,buy_price FROM products WHERE user_id=? AND status='sold' ORDER BY id DESC LIMIT 12",
+        (u["id"],)
+    ).fetchall()]
+    c.close()
+    result=ask_ai(
+        KOLYA_PROMPT+"""
+Ты разбираешь товар, который уже выставлен, но продавец хочет понять, что докрутить.
+У нас НЕТ данных о просмотрах, избранном и сообщениях с площадки — никогда не выдумывай их.
+Оцени только то, что реально есть: фотографии/AI-карточка, заголовок, описание, цена, сколько дней товар в продаже и личная история продаж пользователя.
+Ответь коротко в формате:
+ГЛАВНОЕ: <1 главная мысль>
+1. <конкретное действие>
+2. <конкретное действие>
+3. <только если действительно нужно>
+ЦЕНА: <не снижать сразу / проверить / почему>
+Не давай больше трёх действий. Не говори, что товар "плохой".""",
+        "Товар: "+str(p.get("name") or "")+
+        "\nДней в продаже: "+str(days)+
+        "\nЦена: "+str(p.get("price") or 0)+
+        "\nAI-карточка по фото: "+json.dumps(ai,ensure_ascii=False)+
+        "\nЗаголовок: "+str(p.get("listing_title") or "")+
+        "\nОписание: "+str(p.get("listing_description") or "")+
+        "\nПрошлые продажи пользователя: "+json.dumps(history,ensure_ascii=False)
+    )
+    if not result:
+        tips=[]
+        if not p.get("listing_title"): tips.append("Сначала докрути заголовок — покупатель должен сразу понять, что продаётся.")
+        if not p.get("listing_description"): tips.append("Добавь короткое описание с важными деталями и состоянием.")
+        if ai.get("missing_photos"): tips.append("Досними то, чего не хватает по фото: "+", ".join(ai.get("missing_photos")[:2]))
+        if not tips: tips=["Товар уже оформлен. Не режем цену вслепую: сначала обнови главное фото и проверь, всё ли важное видно покупателю."]
+        result="ГЛАВНОЕ: Есть за что зацепиться — сначала докрутим подачу.\n1. "+tips[0]
+        if len(tips)>1: result+="\n2. "+tips[1]
+        result+="\nЦЕНА: Не снижай сразу без данных о реакции покупателей."
+    event(u["id"],"PRODUCT_BOOST_ANALYZED",pid,{"days":days})
+    return {"text":result,"days":days}
 
 @app.post("/api/products/{pid}/listed")
 def listed(pid:int,authorization:Optional[str]=Header(None)):
