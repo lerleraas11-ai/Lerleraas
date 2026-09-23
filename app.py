@@ -275,6 +275,43 @@ def telegram_download_photo(file_id):
         out.write_bytes(raw)
     return "/uploads/"+fn
 
+def ai_done_message(data):
+    if not data:
+        return "Карточку сохранил 💜"
+    try:
+        lo=float(data.get("suggested_price_low") or 0)
+        hi=float(data.get("suggested_price_high") or 0)
+    except Exception:
+        lo=hi=0
+    price=("\nОриентир: "+str(int(lo or hi))+"–"+str(int(hi or lo))+" ₽") if (lo or hi) else ""
+    value=str(data.get("buyer_value") or "").strip()
+    return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+"\n\nКарточка уже собрана в приложении 💜"
+
+def analyze_single_background(pid,uid,chat_id):
+    data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
+    telegram_send(chat_id,ai_done_message(data))
+
+def analyze_album_background(media_group_id,pid,uid,chat_id):
+    time.sleep(2.6)
+    c=con()
+    g=c.execute("SELECT * FROM telegram_groups WHERE media_group_id=?",(str(media_group_id),)).fetchone()
+    if not g:
+        c.close()
+        return
+    updated=float(g["updated_at"] or 0)
+    analyzed=float(g["analyzed_at"] or 0)
+    if analyzed>=updated or time.time()-updated<2.0:
+        c.close()
+        return
+    cur=c.execute("UPDATE telegram_groups SET analyzed_at=? WHERE media_group_id=? AND analyzed_at<?",(updated,str(media_group_id),updated))
+    c.commit()
+    won=cur.rowcount>0
+    c.close()
+    if not won:
+        return
+    data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
+    telegram_send(chat_id,ai_done_message(data))
+
 class Register(BaseModel):
     name:str
     email:str
