@@ -558,14 +558,15 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                 except Exception: pass
                 if not arr and row["photo_url"]: arr=[row["photo_url"]]
                 if url not in arr: arr.append(url)
-                c.execute("UPDATE products SET photos_json=? WHERE id=?",(json.dumps(arr),pid))
+                c.execute("UPDATE products SET photos_json=?,ai_status='waiting' WHERE id=?",(json.dumps(arr),pid))
+                c.execute("UPDATE telegram_groups SET updated_at=? WHERE media_group_id=?",(time.time(),str(media_group_id)))
             else:
                 arr=[url]
                 cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
                                  VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
                 pid=cur.lastrowid
                 c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
-                c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id) VALUES(?,?,?)",(str(media_group_id),u["id"],pid))
+                c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id,updated_at,analyzed_at) VALUES(?,?,?,?,0)",(str(media_group_id),u["id"],pid,time.time()))
                 created_new=True
         else:
             cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
@@ -578,7 +579,11 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
             event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
             src=(u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home")
             labels={"home":"🏠 Дом","lot":"📦 Лот","buy":"🛒 Закупка","business":"🏪 Остатки","friends":"👥 Знакомые"}
-            telegram_send(chat_id,"Получил 💜 Товар уже в магазине. Источник: "+labels.get(src,"📦 Товар")+".\n\nХочешь сменить источник перед следующим товаром — отправь /source.")
+            telegram_send(chat_id,"Получил 💜 Фото сохранил. Сейчас сам посмотрю товар и соберу карточку. Источник: "+labels.get(src,"📦 Товар")+".")
+        if media_group_id:
+            threading.Thread(target=analyze_album_background,args=(str(media_group_id),pid,u["id"],chat_id),daemon=True).start()
+        elif created_new:
+            threading.Thread(target=analyze_single_background,args=(pid,u["id"],chat_id),daemon=True).start()
         return {"ok":True}
     telegram_send(chat_id,"Кидай фото товара или альбом 💜 Я сохраню их в магазин. Источник можно поменять командой /source.")
     return {"ok":True}
