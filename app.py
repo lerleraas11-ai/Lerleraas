@@ -449,6 +449,35 @@ def state(authorization:Optional[str]=Header(None)):
         row["revenue"]+=(p["sold_price"] or 0)
         row["profit"]+=(p["sold_price"] or 0)-(p["buy_price"] or 0)-(p.get("sale_expenses") or 0)
         row["sold"]+=1
+
+    category_stats={}
+    for p in ps:
+        cat=(p.get("category") or "Без категории").strip() or "Без категории"
+        row=category_stats.setdefault(cat,{"listed":0,"sold":0,"revenue":0,"profit":0,"days_total":0,"days_count":0})
+        if p["status"]=="listed":
+            row["listed"]+=1
+        if p["status"]=="sold":
+            row["sold"]+=1
+            row["revenue"]+=(p["sold_price"] or 0)
+            row["profit"]+=(p["sold_price"] or 0)-(p["buy_price"] or 0)-(p.get("sale_expenses") or 0)
+            try:
+                if p.get("listed_at") and p.get("sold_at"):
+                    a=datetime.fromisoformat(str(p["listed_at"]).replace("Z",""))
+                    b=datetime.fromisoformat(str(p["sold_at"]).replace("Z",""))
+                    row["days_total"]+=max(0,(b-a).days)
+                    row["days_count"]+=1
+            except Exception:
+                pass
+    category_insights=[]
+    for cat,row in category_stats.items():
+        avg_days=(row["days_total"]/row["days_count"]) if row["days_count"] else None
+        avg_profit=(row["profit"]/row["sold"]) if row["sold"] else 0
+        category_insights.append({
+          "category":cat,"listed":row["listed"],"sold":row["sold"],
+          "revenue":row["revenue"],"profit":row["profit"],
+          "avg_profit":avg_profit,"avg_days":avg_days
+        })
+    category_insights.sort(key=lambda x:(x["sold"],x["profit"]),reverse=True)
     try: modes=json.loads(u.get("business_modes") or "[]")
     except Exception: modes=[]
     salary_percent=float(u.get("salary_percent") or 30)
@@ -465,7 +494,8 @@ def state(authorization:Optional[str]=Header(None)):
           "revenue":revenue,"earned":revenue,"profit":profit,"sold":len(sold),
           "avg":revenue/len(sold) if sold else 0,"counts":counts,"by_source":by_source,
           "salary_taken":taken,"salary_target":salary_target,"salary_available":max(salary_target-taken,0),
-          "stale_count":len(stale),"stale_products":stale[:5]
+          "stale_count":len(stale),"stale_products":stale[:5],
+          "category_insights":category_insights[:8]
         }
     }
 
@@ -897,7 +927,15 @@ def chat(d:Chat,authorization:Optional[str]=Header(None)):
         (u["id"],)
     ).fetchall()]
     c.close()
-    context={"goal":u["goal"],"sales":sold,"active":active}
+    cat_rows=[dict(x) for x in c.execute(
+        """SELECT category,
+                  SUM(CASE WHEN status='sold' THEN 1 ELSE 0 END) sold_count,
+                  SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed_count,
+                  SUM(CASE WHEN status='sold' THEN sold_price ELSE 0 END) revenue
+           FROM products WHERE user_id=? GROUP BY category ORDER BY sold_count DESC LIMIT 10""",
+        (u["id"],)
+    ).fetchall()]
+    context={"goal":u["goal"],"sales":sold,"active":active,"category_stats":cat_rows}
     result=ask_ai(
         KOLYA_PROMPT+"\nТы отвечаешь как личный помощник именно этого продавца. Используй его историю товаров и продаж, не придумывай факты.",
         "Контекст: "+json.dumps(context,ensure_ascii=False)+"\nВопрос: "+d.text
