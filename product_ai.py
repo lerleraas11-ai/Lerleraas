@@ -36,7 +36,22 @@ def analyze_product_ai(pid, uid, con, ask_ai, event, kolya_prompt):
         c.close()
         return None
     p=dict(row)
-    history=[dict(x) for x in c.execute("SELECT name,category,sold_price,buy_price FROM products WHERE user_id=? AND status='sold' ORDER BY id DESC LIMIT 12",(uid,)).fetchall()]
+    raw_history=[dict(x) for x in c.execute("SELECT id,name,category,sold_price,buy_price,listed_at,sold_at FROM products WHERE user_id=? AND status='sold' ORDER BY id DESC LIMIT 30",(uid,)).fetchall()]
+    history=[]
+    for h in raw_history:
+        days=None
+        try:
+            if h.get('listed_at') and h.get('sold_at'):
+                from datetime import datetime
+                a=datetime.fromisoformat(str(h['listed_at']).replace('Z',''))
+                b=datetime.fromisoformat(str(h['sold_at']).replace('Z',''))
+                days=max(0,(b-a).days)
+        except Exception:
+            days=None
+        history.append({
+          'id':h.get('id'),'name':h.get('name'),'category':h.get('category'),
+          'sold_price':h.get('sold_price'),'buy_price':h.get('buy_price'),'days_to_sell':days
+        })
     c.execute("UPDATE products SET ai_status='thinking' WHERE id=?",(pid,))
     c.commit()
     c.close()
@@ -65,6 +80,8 @@ def analyze_product_ai(pid, uid, con, ask_ai, event, kolya_prompt):
   "missing_photos":["какой кадр стоит доснять"],
   "listing_title":"готовый заголовок объявления",
   "listing_description":"готовое живое описание объявления",
+  "similar_sales":[{"id":0,"name":"точное название из истории","sold_price":0,"days_to_sell":null,"why_similar":"чем похож"}],
+  "personal_strategy":"коротко, как использовать личную историю этого продавца для текущего товара",
   "next_action":"один следующий шаг"
 }
 Правила: не угадывай бренд, модель, размер, материал, состояние, комплект или дефекты. Если не видно — null или пустой список.
@@ -75,6 +92,9 @@ def analyze_product_ai(pid, uid, con, ask_ai, event, kolya_prompt):
 Если важной информации не хватает, не выдумывай её: вынеси её в needs_clarification.
 Описание должно быть естественным, коротким и полезным покупателю, без рекламных штампов и без просьб «пишите».
 missing_photos — только действительно нужные кадры, которые помогут продаже: бирка, маркировка, дефект, подошва, размер, комплект и т.п.
+История продаж пользователя — это реальные прошлые продажи. Если среди них есть действительно похожие товары, верни максимум 3 в similar_sales, используя ТОЛЬКО их реальные id, name, sold_price и days_to_sell из переданного списка. Ничего не выдумывай.
+Если похожих продаж нет — similar_sales должен быть [].
+personal_strategy формулируй только на основе найденных похожих продаж. Если их нет, прямо скажи, что личной истории по похожему товару пока мало.
 '''
     user_notes=str(p.get('user_notes') or '').strip()
     prompt='Подпись пользователя: '+str(p.get('name') or '')+'\nИсточник товара: '+str(p.get('source_type') or 'home')+'\nУточнения пользователя (это подтверждённые факты, они важнее догадок по фото): '+(user_notes or 'нет')+'\nИстория продаж пользователя: '+json.dumps(history,ensure_ascii=False)
@@ -88,7 +108,8 @@ missing_photos — только действительно нужные кадр
           'needs_clarification':['AI-разбор пока недоступен — проверь подключение AI'],
           'buyer_value':'','suggested_price_low':0,'suggested_price_high':0,
           'price_note':'Цена не определена','photo_advice':'','missing_photos':[],
-          'listing_title':'','listing_description':'',
+          'listing_title':'','listing_description':'','similar_sales':[],
+          'personal_strategy':'Личной истории по похожему товару пока недостаточно.',
           'next_action':'Проверь подключение AI и повтори разбор.'
         }
     name=str(data.get('name') or p.get('name') or 'Товар')[:160]
