@@ -77,8 +77,9 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
     </div>
 
     <div class="card">
-      <b>Сегодня без геройства 👇</b>
-      <div id="todayPlan" class="muted" style="margin-top:8px">1. Отправь Коле 1–3 товара<br>2. Выставь готовые карточки<br>3. Отметь продажи</div>
+      <div class="row"><div><b>Сегодня без геройства 👇</b><div class="muted">Коля собрал план из твоих товаров и продаж</div></div><span class="tag">на сегодня</span></div>
+      <div id="todayPlan" style="margin-top:10px"></div>
+      <div id="todayGoalHint" class="muted" style="margin-top:10px"></div>
     </div>
   </section>
 
@@ -234,7 +235,16 @@ function render(){
     }).join('<br><br>');
   }else{categoryMemory.classList.add('hide')}
   if(st.stale_count){staleBox.classList.remove('hide');staleText.textContent='Есть '+st.stale_count+' товар(а), которые уже 7+ дней в продаже.'}else{staleBox.classList.add('hide')}
+  renderDailyPlan(st.daily_plan||{});
   renderSourceStats();renderProducts();
+}
+function renderDailyPlan(plan){
+  const actions=plan.actions||[];
+  todayPlan.innerHTML=actions.length?actions.map((a,i)=>{
+    const click=a.product_id?('onclick="openProduct('+a.product_id+')"'):(a.type==='add'?'onclick="connectTelegram()"':'');
+    return '<div class="item" '+click+' style="cursor:pointer"><div style="font-size:20px">'+(a.type==='publish'?'🚀':a.type==='finish'?'🛠️':a.type==='boost'?'👀':a.type==='sales'?'💰':'📸')+'</div><div class="grow"><b>Шаг '+(i+1)+'</b><div class="muted">'+escapeHtml(a.text||'')+'</div></div><span class="tag">сделать</span></div>';
+  }).join(''):'<div class="muted">Сегодня всё спокойно 💜</div>';
+  todayGoalHint.textContent=plan.goal_hint||'';
 }
 function renderSourceStats(){
   const rows=STATE.stats.by_source||{},parts=[];
