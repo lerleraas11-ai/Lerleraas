@@ -94,7 +94,8 @@ def init():
       ("business_modes","ALTER TABLE users ADD COLUMN business_modes TEXT DEFAULT '[]'"),
       ("salary_percent","ALTER TABLE users ADD COLUMN salary_percent REAL DEFAULT 30"),
       ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''"),
-      ("pending_product_id","ALTER TABLE users ADD COLUMN pending_product_id INTEGER")
+      ("pending_product_id","ALTER TABLE users ADD COLUMN pending_product_id INTEGER"),
+      ("pending_mode","ALTER TABLE users ADD COLUMN pending_mode TEXT DEFAULT ''")
     ]:
         if col not in ucols: c.execute(ddl)
     pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
@@ -233,6 +234,13 @@ def source_keyboard():
       [{"text":"👥 Знакомые","callback_data":"source:friends"}]
     ]}
 
+def product_continue_keyboard(has_missing=False):
+    rows=[]
+    if has_missing:
+        rows.append([{"text":"📷 Дослать фото","callback_data":"product:attach"}])
+    rows.append([{"text":"➕ Новый товар","callback_data":"product:new"}])
+    return {"inline_keyboard":rows}
+
 def telegram_bot_username():
     configured=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@").strip()
     if configured:
@@ -297,8 +305,11 @@ def ai_done_message(data):
 
 def analyze_single_background(pid,uid,chat_id):
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
-    c=con(); c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,uid)); c.commit(); c.close()
-    telegram_send(chat_id,ai_done_message(data))
+    missing=bool((data or {}).get("needs_clarification") or (data or {}).get("missing_photos"))
+    c=con()
+    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
+    c.commit(); c.close()
+    telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
 def analyze_album_background(media_group_id,pid,uid,chat_id):
     time.sleep(2.6)
@@ -319,8 +330,11 @@ def analyze_album_background(media_group_id,pid,uid,chat_id):
     if not won:
         return
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
-    c=con(); c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,uid)); c.commit(); c.close()
-    telegram_send(chat_id,ai_done_message(data))
+    missing=bool((data or {}).get("needs_clarification") or (data or {}).get("missing_photos"))
+    c=con()
+    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
+    c.commit(); c.close()
+    telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
 class Register(BaseModel):
     name:str
