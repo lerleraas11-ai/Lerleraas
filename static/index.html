@@ -18,7 +18,7 @@ button,input,select{font:inherit}.app{max-width:480px;margin:auto;min-height:100
 .screen{display:none}.screen.on{display:block}.sectionTitle{font-size:25px;font-weight:900;margin:8px 0 12px}
 .item{display:flex;gap:11px;align-items:center;padding:10px;background:#ffffff0c;border:1px solid #ffffff12;border-radius:18px;margin:9px 0}.thumb{width:72px;height:72px;border-radius:14px;background:#503083;object-fit:cover}.grow{flex:1;min-width:0}.item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tag{font-size:11px;border-radius:99px;padding:5px 8px;background:#7046b5;white-space:nowrap}
 .source{font-size:11px;color:#eadfff}.nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(480px,100%);display:grid;grid-template-columns:repeat(4,1fr);background:#180735f4;border-top:1px solid #ffffff15;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:20}.nav button{border:0;background:none;color:#cdbef0;font-size:11px;padding:3px}.nav button span{font-size:20px;display:block;margin-bottom:2px}.nav button.on{color:var(--lime);font-weight:850}
-.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:50}.modal.on{display:flex}.sheet{width:min(480px,100%);max-height:92vh;overflow:auto;background:#281051;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom))}.preview{aspect-ratio:4/3;border-radius:19px;background:#46267b;overflow:hidden;display:grid;place-items:center;margin:8px 0 8px}.preview img{width:100%;height:100%;object-fit:cover}.gallery{display:flex;gap:7px;overflow:auto;margin-bottom:14px}.gallery img{width:58px;height:58px;border-radius:10px;object-fit:cover;border:2px solid transparent}.gallery img.on{border-color:var(--lime)}.aiGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.aiCell{background:#ffffff0b;border-radius:13px;padding:10px}.aiCell b{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.aiList{margin:8px 0 0;padding-left:18px}.aiList li{margin:4px 0}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}input,select{width:100%;border:1px solid #7652ba;background:#2b1259;color:#fff;border-radius:14px;padding:13px;font-size:16px}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:50}.modal.on{display:flex}.sheet{width:min(480px,100%);max-height:92vh;overflow:auto;background:#281051;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom))}.preview{aspect-ratio:4/3;border-radius:19px;background:#46267b;overflow:hidden;display:grid;place-items:center;margin:8px 0 8px}.preview img{width:100%;height:100%;object-fit:cover}.gallery{display:flex;gap:7px;overflow:auto;margin-bottom:14px}.gallery img{width:58px;height:58px;border-radius:10px;object-fit:cover;border:2px solid transparent}.gallery img.on{border-color:var(--lime)}.aiGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.aiCell{background:#ffffff0b;border-radius:13px;padding:10px}.aiCell b{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.aiList{margin:8px 0 0;padding-left:18px}.aiList li{margin:4px 0}.readyBox{background:linear-gradient(145deg,#dcff4b22,#ffffff0b);border:1px solid #dcff4b55}.readyPct{font-size:34px;font-weight:950;color:var(--lime)}.readyLine{height:10px;background:#ffffff14;border-radius:99px;overflow:hidden;margin:10px 0}.readyLine i{display:block;height:100%;background:var(--lime);border-radius:99px}.checkrow{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}input,select{width:100%;border:1px solid #7652ba;background:#2b1259;color:#fff;border-radius:14px;padding:13px;font-size:16px}
 .bubble{padding:12px 14px;border-radius:17px;background:#3c1b73;margin:8px 0;max-width:88%;white-space:pre-wrap}.bubble.me{margin-left:auto;background:#7d4cff}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.quick button{text-align:left;min-height:74px}
 .success{position:fixed;inset:0;background:#17072ff2;z-index:80;display:none;align-items:center;justify-content:center;padding:20px}.success.on{display:flex}.success .card{width:min(420px,100%);text-align:center}.money{font-size:48px;font-weight:950;color:var(--lime)}
 .auth{padding-top:10vh}.auth .card{margin-top:25px}.link{color:var(--lime);font-weight:850;text-decoration:none}.error{color:#ffb4c5;font-size:13px;margin-top:8px}
@@ -253,6 +253,41 @@ function switchPhoto(src,el){
   const main=document.getElementById('mainProductPhoto');if(main)main.src=src;
   document.querySelectorAll('.gallery img').forEach(x=>x.classList.remove('on'));if(el)el.classList.add('on');
 }
+function readiness(p,ai){
+  let score=0,total=0,missing=[];
+  const add=(ok,label)=>{total++;if(ok)score++;else missing.push(label)};
+  add(!!(p.name&&p.name!=='Товар из Telegram'),'точное название');
+  add(!!p.category,'категория');
+  add(!!(ai.condition||p.condition),'состояние');
+  add(!!(p.listing_title),'заголовок объявления');
+  add(!!(p.listing_description),'описание');
+  add(!!(p.price&&Number(p.price)>0),'цена');
+  const questions=(ai.needs_clarification||[]).filter(Boolean);
+  const photos=(ai.missing_photos||[]).filter(Boolean);
+  if(questions.length){total++;missing.push('ответить Коле на '+questions.length+' уточн.')}
+  else score++,total++;
+  if(photos.length){total++;missing.push('доснять '+photos.length+' фото')}
+  else score++,total++;
+  return {pct:Math.round(score/Math.max(total,1)*100),missing,questions,photos};
+}
+function finalReadyBlock(p,ai,id){
+  const r=readiness(p,ai);
+  let h='<div class="card readyBox"><div class="row"><div><b>Готовность к публикации</b><div class="muted">Коля проверил карточку</div></div><div class="readyPct">'+r.pct+'%</div></div>';
+  h+='<div class="readyLine"><i style="width:'+r.pct+'%"></i></div>';
+  if(!r.missing.length){
+    h+='<div class="checkrow">✅ <span>Всё основное готово. Можно копировать объявление и выставлять.</span></div>';
+  }else{
+    h+='<div class="muted">Чтобы карточка была сильнее:</div>';
+    r.missing.slice(0,4).forEach(x=>h+='<div class="checkrow">• <span>'+escapeHtml(x)+'</span></div>');
+  }
+  if(p.listing_title){
+    h+='<button class="btn lime full" style="margin-top:12px" onclick="copyListing('+id+')">📋 Скопировать готовое объявление</button>';
+  }
+  if(p.status==='draft'){
+    h+='<button class="btn purple full" style="margin-top:8px" onclick="listed('+id+')">✅ Я выставила объявление</button>';
+  }
+  return h+'</div>';
+}
 function aiDetails(ai,status){
   if(status==='thinking')return '<div class="card"><b>🤖 Коля сейчас смотрит фотографии…</b><div class="muted">Название, детали и ориентир цены подтянутся сами.</div></div>';
   if(!ai||!Object.keys(ai).length)return '<div class="card"><b>🤖 Коля ещё не разобрал товар</b><div class="muted">Если фото только что пришли из Telegram — дай мне немного времени. Можно запустить разбор ещё раз.</div></div>';
@@ -283,12 +318,12 @@ async function openProduct(id){
   productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
   +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
+  +finalReadyBlock(p,ai,id)
   +aiDetails(ai,p.ai_status)
   +((ai.needs_clarification?.length||p.user_notes)?'<div class="card"><b>💬 Уточнить Коле</b><div class="muted" style="margin-top:5px">Если по фото что-то не видно — просто допиши факт. Например: «стелька 17 см», «есть коробка», «дефект только на рукаве».</div>'+(p.user_notes?'<div class="tiny" style="margin-top:8px">Уже учтено: '+escapeHtml(p.user_notes)+'</div>':'')+'<div class="row" style="margin-top:10px"><input id="clarifyInput" placeholder="Напиши уточнение"><button class="btn lime" onclick="clarifyProduct('+id+')">Добавить</button></div></div>':'')
   +(p.listing_title?'<div class="card"><div class="row"><b>✍️ Объявление уже готово</b><span class="tag">AI</span></div><div style="font-weight:850;margin-top:10px">'+escapeHtml(p.listing_title)+'</div><div class="muted" style="white-space:pre-wrap;margin-top:8px">'+escapeHtml(p.listing_description||'')+'</div><div class="grid2" style="margin-top:10px"><button class="btn lime" onclick="copyListing('+id+')">📋 Скопировать</button><button class="btn ghost" onclick="listing('+id+')">🔄 Переписать</button></div></div>':'<div class="card muted">Коля ещё собирает объявление по фотографиям.</div>')
   +'<button class="btn white full" onclick="analyze('+id+')">🔄 Пересмотреть все фото</button>'
   +'<div id="action" style="margin-top:10px"></div>'
-  +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила объявление</button>':'')
   +(p.status==='listed'?'<button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
   productModal.classList.add('on');
 }
