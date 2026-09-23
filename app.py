@@ -1079,10 +1079,14 @@ async def add_product(
     category:str=Form(""),
     condition:str=Form(""),
     price:float=Form(0),
+    source_type:str=Form("home"),
+    buy_price:float=Form(0),
     photo:UploadFile|None=File(None)
 ):
     u=user(authorization)
+    source_type=source_type if source_type in ("home","lot","buy","business","friends") else "home"
     url=None
+    photos=[]
     if photo and photo.filename:
         raw=await photo.read()
         fn=secrets.token_hex(8)+".jpg"
@@ -1095,16 +1099,23 @@ async def add_product(
         except Exception:
             path.write_bytes(raw)
         url="/uploads/"+fn
+        photos=[url]
     c=con()
+    lot_id=u.get("active_lot_id") if source_type=="lot" else None
     cur=c.execute(
-        "INSERT INTO products(user_id,name,category,condition,photo_url,price) VALUES(?,?,?,?,?,?)",
-        (u["id"],name,category,condition,url,price)
+        """INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,buy_price,status,source,source_type,lot_id,ai_status)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (u["id"],name.strip() or "Новый товар",category.strip(),condition.strip(),url,json.dumps(photos),
+         max(0,price),max(0,buy_price),"draft","app",source_type,lot_id,"waiting" if url else "done")
     )
-    c.commit()
     pid=cur.lastrowid
+    c.execute("UPDATE users SET pending_product_id=?,pending_mode='' WHERE id=?",(pid,u["id"]))
+    c.commit()
     c.close()
-    event(u["id"],"PRODUCT_CREATED",pid)
-    return {"id":pid}
+    event(u["id"],"PRODUCT_CREATED_IN_APP",pid,{"source_type":source_type})
+    if url:
+        threading.Thread(target=analyze_product_ai,args=(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT),daemon=True).start()
+    return {"id":pid,"analyzing":bool(url)}
 
 @app.get("/api/products/{pid}")
 def product(pid:int,authorization:Optional[str]=Header(None)):
