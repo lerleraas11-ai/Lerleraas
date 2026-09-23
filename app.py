@@ -105,7 +105,8 @@ def init():
       ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''"),
       ("pending_product_id","ALTER TABLE users ADD COLUMN pending_product_id INTEGER"),
       ("pending_mode","ALTER TABLE users ADD COLUMN pending_mode TEXT DEFAULT ''"),
-      ("active_lot_id","ALTER TABLE users ADD COLUMN active_lot_id INTEGER")
+      ("active_lot_id","ALTER TABLE users ADD COLUMN active_lot_id INTEGER"),
+      ("lot_batch_mode","ALTER TABLE users ADD COLUMN lot_batch_mode INTEGER DEFAULT 0")
     ]:
         if col not in ucols: c.execute(ddl)
     pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
@@ -123,6 +124,11 @@ def init():
       ("lot_id","ALTER TABLE products ADD COLUMN lot_id INTEGER")
     ]:
         if col not in pcols: c.execute(ddl)
+    lcols={r["name"] for r in c.execute("PRAGMA table_info(lots)").fetchall()}
+    for col,ddl in [
+      ("expected_items","ALTER TABLE lots ADD COLUMN expected_items INTEGER DEFAULT 0")
+    ]:
+        if col not in lcols: c.execute(ddl)
     gcols={r["name"] for r in c.execute("PRAGMA table_info(telegram_groups)").fetchall()}
     for col,ddl in [
       ("updated_at","ALTER TABLE telegram_groups ADD COLUMN updated_at REAL DEFAULT 0"),
@@ -383,6 +389,7 @@ class LotCreate(BaseModel):
     name:str
     purchase_cost:float=0
     note:str=""
+    expected_items:int=0
 
 @app.get("/")
 def home():
@@ -546,9 +553,13 @@ def state(authorization:Optional[str]=Header(None)):
         lot_summaries.append({
           "id":lot["id"],"name":lot["name"],"purchase_cost":purchase,"note":lot.get("note") or "",
           "status":lot.get("status") or "active","items":len(lp),
+          "expected_items":int(lot.get("expected_items") or 0),
           "new":sum(1 for p in lp if p["status"]=="draft"),
+          "ready":sum(1 for p in lp if bool(p.get("listing_title"))),
           "listed":sum(1 for p in lp if p["status"]=="listed"),
           "sold":len(ls),"returned":returned,"remaining":remaining,
+          "potential_unsold":sum(float(p.get("price") or 0) for p in lp if p["status"]!="sold"),
+          "potential_total":returned+sum(float(p.get("price") or 0) for p in lp if p["status"]!="sold"),
           "pure_profit":pure_profit,"recouped":returned>=purchase if purchase>0 else bool(returned)
         })
 
@@ -560,7 +571,8 @@ def state(authorization:Optional[str]=Header(None)):
         "profile":{
           "name":u["name"],"goal":u["goal"],"goal_label":u.get("goal_label") or "",
           "default_source":u.get("default_source") or "home","business_modes":modes,
-          "salary_percent":salary_percent,"active_lot_id":u.get("active_lot_id")
+          "salary_percent":salary_percent,"active_lot_id":u.get("active_lot_id"),
+          "lot_batch_mode":bool(u.get("lot_batch_mode"))
         },
         "products":ps,
         "lots":lot_summaries,
@@ -598,10 +610,10 @@ def create_lot(d:LotCreate,authorization:Optional[str]=Header(None)):
     if not name:
         raise HTTPException(400,"Дай лоту название")
     c=con()
-    cur=c.execute("INSERT INTO lots(user_id,name,purchase_cost,note) VALUES(?,?,?,?)",
-                  (u["id"],name,max(0,d.purchase_cost),d.note[:300]))
+    cur=c.execute("INSERT INTO lots(user_id,name,purchase_cost,note,expected_items) VALUES(?,?,?,?,?)",
+                  (u["id"],name,max(0,d.purchase_cost),d.note[:300],max(0,d.expected_items)))
     lid=cur.lastrowid
-    c.execute("UPDATE users SET active_lot_id=?,default_source='lot' WHERE id=?",(lid,u["id"]))
+    c.execute("UPDATE users SET active_lot_id=?,default_source='lot',lot_batch_mode=1 WHERE id=?",(lid,u["id"]))
     c.commit(); c.close()
     event(u["id"],"LOT_CREATED",None,{"lot_id":lid,"purchase_cost":d.purchase_cost})
     return {"id":lid}
@@ -671,14 +683,14 @@ def activate_lot(lid:int,authorization:Optional[str]=Header(None)):
     lot=c.execute("SELECT id FROM lots WHERE id=? AND user_id=?",(lid,u["id"])).fetchone()
     if not lot:
         c.close(); raise HTTPException(404,"Лот не найден")
-    c.execute("UPDATE users SET active_lot_id=?,default_source='lot' WHERE id=?",(lid,u["id"]))
+    c.execute("UPDATE users SET active_lot_id=?,default_source='lot',lot_batch_mode=1 WHERE id=?",(lid,u["id"]))
     c.commit(); c.close()
     return {"ok":True}
 
 @app.post("/api/lots/deactivate")
 def deactivate_lot(authorization:Optional[str]=Header(None)):
     u=user(authorization)
-    c=con(); c.execute("UPDATE users SET active_lot_id=NULL WHERE id=?",(u["id"],)); c.commit(); c.close()
+    c=con(); c.execute("UPDATE users SET active_lot_id=NULL,lot_batch_mode=0,default_source='home' WHERE id=?",(u["id"],)); c.commit(); c.close()
     return {"ok":True}
 
 @app.post("/api/salary")
