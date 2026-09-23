@@ -313,6 +313,15 @@ function aiDetails(ai,status){
   if(ai.defects?.length)h+='<hr><b>Что заметил по состоянию</b><ul class="aiList">'+ai.defects.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.included?.length)h+='<hr><b>Что входит</b><ul class="aiList">'+ai.included.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.needs_clarification?.length)h+='<hr><b>❓ Что по фото не узнать</b><ul class="aiList">'+ai.needs_clarification.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
+  if(ai.similar_sales?.length){
+    h+='<hr><b>🧠 Похожее из твоей истории</b>';
+    ai.similar_sales.slice(0,3).forEach(x=>{
+      h+='<div class="aiCell" style="margin-top:7px"><b>'+escapeHtml(x.name||'Похожий товар')+'</b><div>'+money(x.sold_price||0)+(x.days_to_sell!==null&&x.days_to_sell!==undefined?' · продано за '+x.days_to_sell+' дн.':'')+'</div>'+(x.why_similar?'<div class="tiny">'+escapeHtml(x.why_similar)+'</div>':'')+'</div>';
+    });
+    if(ai.personal_strategy)h+='<div class="muted" style="margin-top:8px">'+escapeHtml(ai.personal_strategy)+'</div>';
+  }else if(ai.personal_strategy){
+    h+='<hr><b>🧠 Личная история</b><div class="muted">'+escapeHtml(ai.personal_strategy)+'</div>';
+  }
   if(ai.photo_advice)h+='<hr><b>📸 По фото</b><div class="muted">'+escapeHtml(ai.photo_advice)+'</div>';
   if(ai.missing_photos?.length)h+='<hr><b>📷 Что ещё сфотографировать</b><ul class="aiList">'+ai.missing_photos.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>';
   if(ai.next_action)h+='<hr><b>Что делаем сейчас</b><div>'+escapeHtml(ai.next_action)+'</div>';
