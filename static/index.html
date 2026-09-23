@@ -84,7 +84,7 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
   </section>
 
   <section id="products" class="screen">
-    <div class="row"><div class="sectionTitle">📦 Мои товары</div><button class="btn ghost" onclick="refreshProducts()">Обновить</button></div>
+    <div class="row"><div class="sectionTitle">📦 Мои товары</div><div class="row"><button class="btn lime" onclick="openCreateProduct()">+ Товар</button><button class="btn ghost" onclick="refreshProducts()">Обновить</button></div></div>
     <div class="chips" id="statusChips">
       <button class="chip on" onclick="setFilter('all',this)">Все</button>
       <button class="chip" onclick="setFilter('draft',this)">Новые</button>
@@ -157,6 +157,24 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
 </div>
 
 <div id="productModal" class="modal"><div id="productSheet" class="sheet"></div></div>
+
+<div id="createProductModal" class="modal"><div class="sheet">
+  <div class="row"><div><h2>✨ Новый товар</h2><div class="muted">Можно создать прямо здесь — Коля сам разберёт фото</div></div><span class="link" onclick="closeM('createProductModal')">Закрыть</span></div>
+  <div class="field"><label>Фото товара</label><input id="cpPhoto" type="file" accept="image/*" capture="environment"></div>
+  <div class="field"><label>Название, если хочешь подсказать</label><input id="cpName" placeholder="Можно оставить пустым — Коля попробует определить"></div>
+  <div class="field"><label>Откуда товар</label><select id="cpSource">
+    <option value="home">🏠 Дом / свои вещи</option>
+    <option value="lot">📦 Лот / паллета</option>
+    <option value="buy">🛒 Закупка под перепродажу</option>
+    <option value="business">🏪 Остатки бизнеса</option>
+    <option value="friends">👥 Родные и знакомые</option>
+  </select></div>
+  <div id="cpCostWrap" class="field hide"><label id="cpCostLabel">Закупка</label><input id="cpCost" type="number" placeholder="Например: 480"></div>
+  <div class="field"><label>Цена, если уже решила</label><input id="cpPrice" type="number" placeholder="Можно оставить пустым"></div>
+  <div class="field"><label>Что точно знаешь о товаре</label><input id="cpCondition" placeholder="Например: новое, есть коробка"></div>
+  <button id="cpCreateBtn" class="btn lime full" onclick="createProductInApp()">🤖 Создать и отдать Коле</button>
+  <div id="cpStatus" class="muted" style="margin-top:10px"></div>
+</div></div>
 
 <div id="settingsModal" class="modal"><div class="sheet">
   <div class="row"><h2>Мой бизнес</h2><span class="link" onclick="closeM('settingsModal')">Закрыть</span></div>
@@ -314,6 +332,40 @@ function showStale(){
   const ids=(STATE.stats.stale_products||[]).map(x=>x.id);
   const arr=(STATE.products||[]).filter(p=>ids.includes(p.id));
   productsList.innerHTML=arr.length?arr.map(p=>'<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb">🤖</div>')+'<div class="grow"><b>'+escapeHtml(p.name||'Товар')+'</b><div class="muted">Пора посмотреть, что можно докрутить</div><div class="source">'+sourceName(p.source_type||'home')+'</div></div><span class="tag">Проверить</span></div>').join(''):'<div class="card muted">Сейчас ничего срочного 💜</div>';
+}
+function openCreateProduct(){
+  cpPhoto.value='';cpName.value='';cpPrice.value='';cpCondition.value='';cpCost.value='';
+  cpSource.value=STATE?.profile?.default_source||'home';
+  updateCreateCost();
+  cpStatus.textContent='';
+  createProductModal.classList.add('on');
+}
+function updateCreateCost(){
+  const v=cpSource.value;
+  const labels={buy:'Закупочная цена',business:'Себестоимость',friends:'Сколько нужно отдать владельцу'};
+  if(labels[v]){cpCostWrap.classList.remove('hide');cpCostLabel.textContent=labels[v]}
+  else{cpCostWrap.classList.add('hide');cpCost.value=''}
+}
+async function createProductInApp(){
+  const file=cpPhoto.files?.[0];
+  if(!file)return alert('Добавь фото товара');
+  const fd=new FormData();
+  fd.append('photo',file);
+  fd.append('name',(cpName.value||'').trim()||'Новый товар');
+  fd.append('condition',(cpCondition.value||'').trim());
+  fd.append('price',String(+cpPrice.value||0));
+  fd.append('source_type',cpSource.value||'home');
+  fd.append('buy_price',String(+cpCost.value||0));
+  cpCreateBtn.disabled=true;cpStatus.textContent='Коля уже смотрит фото 👀';
+  try{
+    const r=await api('/api/products',{method:'POST',body:fd});
+    closeM('createProductModal');
+    await boot();
+    screen('products');
+    setTimeout(()=>openProduct(r.id),350);
+  }catch(e){
+    cpStatus.textContent=e.message||'Не получилось создать товар';
+  }finally{cpCreateBtn.disabled=false}
 }
 function renderProducts(){
   let arr=STATE.products||[];
@@ -514,6 +566,7 @@ async function takeSalary(){
 }
 function logout(){TOKEN='';localStorage.removeItem('bizhome_token');showAuth()}
 setInterval(async()=>{if(TOKEN&&!main.classList.contains('hide')){try{const s=await api('/api/state');if(JSON.stringify(s.stats)!==JSON.stringify(STATE.stats)||s.products.length!==STATE.products.length){STATE=s;render()}}catch(e){}}},8000);
+document.getElementById('cpSource')?.addEventListener('change',updateCreateCost);
 boot();
 </script>
 </body>
