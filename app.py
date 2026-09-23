@@ -158,19 +158,23 @@ def ai_client():
     except Exception:
         return None
 
-def ask_ai(instructions,prompt,image_url=None):
+def ask_ai(instructions,prompt,image_url=None,image_urls=None):
     cli=ai_client()
     if not cli:
         return None
     try:
         content=[{"type":"input_text","text":prompt}]
-        if image_url and image_url.startswith("/uploads/"):
-            path=UPLOADS/Path(image_url).name
-            if path.exists():
-                import base64, mimetypes
-                mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
-                data=base64.b64encode(path.read_bytes()).decode()
-                content.append({"type":"input_image","image_url":"data:"+mime+";base64,"+data})
+        urls=[]
+        if image_urls: urls.extend(image_urls)
+        elif image_url: urls.append(image_url)
+        import base64, mimetypes
+        for url in urls[:8]:
+            if url and url.startswith("/uploads/"):
+                path=UPLOADS/Path(url).name
+                if path.exists():
+                    mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
+                    data=base64.b64encode(path.read_bytes()).decode()
+                    content.append({"type":"input_image","image_url":"data:"+mime+";base64,"+data})
         r=cli.responses.create(
             model=os.getenv("OPENAI_MODEL","gpt-5.6-luna"),
             instructions=instructions,
