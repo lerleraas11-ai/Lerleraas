@@ -84,6 +84,15 @@ def init():
       update_id TEXT PRIMARY KEY,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS lots(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      name TEXT NOT NULL,
+      purchase_cost REAL DEFAULT 0,
+      note TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
     ucols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     for col,ddl in [
@@ -95,7 +104,8 @@ def init():
       ("salary_percent","ALTER TABLE users ADD COLUMN salary_percent REAL DEFAULT 30"),
       ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''"),
       ("pending_product_id","ALTER TABLE users ADD COLUMN pending_product_id INTEGER"),
-      ("pending_mode","ALTER TABLE users ADD COLUMN pending_mode TEXT DEFAULT ''")
+      ("pending_mode","ALTER TABLE users ADD COLUMN pending_mode TEXT DEFAULT ''"),
+      ("active_lot_id","ALTER TABLE users ADD COLUMN active_lot_id INTEGER")
     ]:
         if col not in ucols: c.execute(ddl)
     pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
@@ -109,7 +119,8 @@ def init():
       ("ai_json","ALTER TABLE products ADD COLUMN ai_json TEXT DEFAULT '{}'"),
       ("ai_status","ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'waiting'"),
       ("ai_updated_at","ALTER TABLE products ADD COLUMN ai_updated_at TEXT"),
-      ("user_notes","ALTER TABLE products ADD COLUMN user_notes TEXT DEFAULT ''")
+      ("user_notes","ALTER TABLE products ADD COLUMN user_notes TEXT DEFAULT ''"),
+      ("lot_id","ALTER TABLE products ADD COLUMN lot_id INTEGER")
     ]:
         if col not in pcols: c.execute(ddl)
     gcols={r["name"] for r in c.execute("PRAGMA table_info(telegram_groups)").fetchall()}
@@ -368,6 +379,11 @@ class SalaryTake(BaseModel):
 class Clarification(BaseModel):
     text:str
 
+class LotCreate(BaseModel):
+    name:str
+    purchase_cost:float=0
+    note:str=""
+
 @app.get("/")
 def home():
     return FileResponse(BASE/"static"/"index.html",headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0","Pragma":"no-cache"})
@@ -421,6 +437,7 @@ def state(authorization:Optional[str]=Header(None)):
     ).fetchall()]
     taken=c.execute("SELECT COALESCE(SUM(amount),0) AS total FROM salary_withdrawals WHERE user_id=?",(u["id"],)).fetchone()["total"] or 0
     withdrawals=[dict(x) for x in c.execute("SELECT * FROM salary_withdrawals WHERE user_id=? ORDER BY id DESC LIMIT 20",(u["id"],)).fetchall()]
+    lots_raw=[dict(x) for x in c.execute("SELECT * FROM lots WHERE user_id=? ORDER BY id DESC",(u["id"],)).fetchall()]
     c.close()
     sold=[p for p in ps if p["status"]=="sold"]
     revenue=sum(p["sold_price"] or 0 for p in sold)
@@ -518,6 +535,23 @@ def state(authorization:Optional[str]=Header(None)):
     else:
         goal_hint="Цель уже закрыта 💜 Можно зафиксировать результат и поставить следующую."
 
+    lot_summaries=[]
+    for lot in lots_raw:
+        lp=[p for p in ps if p.get("lot_id")==lot["id"]]
+        ls=[p for p in lp if p["status"]=="sold"]
+        returned=sum((p.get("sold_price") or 0) for p in ls)
+        purchase=float(lot.get("purchase_cost") or 0)
+        remaining=max(purchase-returned,0)
+        pure_profit=max(returned-purchase,0)
+        lot_summaries.append({
+          "id":lot["id"],"name":lot["name"],"purchase_cost":purchase,"note":lot.get("note") or "",
+          "status":lot.get("status") or "active","items":len(lp),
+          "new":sum(1 for p in lp if p["status"]=="draft"),
+          "listed":sum(1 for p in lp if p["status"]=="listed"),
+          "sold":len(ls),"returned":returned,"remaining":remaining,
+          "pure_profit":pure_profit,"recouped":returned>=purchase if purchase>0 else bool(returned)
+        })
+
     try: modes=json.loads(u.get("business_modes") or "[]")
     except Exception: modes=[]
     salary_percent=float(u.get("salary_percent") or 30)
@@ -526,9 +560,10 @@ def state(authorization:Optional[str]=Header(None)):
         "profile":{
           "name":u["name"],"goal":u["goal"],"goal_label":u.get("goal_label") or "",
           "default_source":u.get("default_source") or "home","business_modes":modes,
-          "salary_percent":salary_percent
+          "salary_percent":salary_percent,"active_lot_id":u.get("active_lot_id")
         },
         "products":ps,
+        "lots":lot_summaries,
         "withdrawals":withdrawals,
         "stats":{
           "revenue":revenue,"earned":revenue,"profit":profit,"sold":len(sold),
@@ -554,6 +589,38 @@ def update_profile(d:ProfileUpdate,authorization:Optional[str]=Header(None)):
     if fields:
         vals.append(u["id"])
         c=con(); c.execute("UPDATE users SET "+",".join(fields)+" WHERE id=?",tuple(vals)); c.commit(); c.close()
+    return {"ok":True}
+
+@app.post("/api/lots")
+def create_lot(d:LotCreate,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    name=d.name.strip()
+    if not name:
+        raise HTTPException(400,"Дай лоту название")
+    c=con()
+    cur=c.execute("INSERT INTO lots(user_id,name,purchase_cost,note) VALUES(?,?,?,?)",
+                  (u["id"],name,max(0,d.purchase_cost),d.note[:300]))
+    lid=cur.lastrowid
+    c.execute("UPDATE users SET active_lot_id=?,default_source='lot' WHERE id=?",(lid,u["id"]))
+    c.commit(); c.close()
+    event(u["id"],"LOT_CREATED",None,{"lot_id":lid,"purchase_cost":d.purchase_cost})
+    return {"id":lid}
+
+@app.post("/api/lots/{lid}/activate")
+def activate_lot(lid:int,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    c=con()
+    lot=c.execute("SELECT id FROM lots WHERE id=? AND user_id=?",(lid,u["id"])).fetchone()
+    if not lot:
+        c.close(); raise HTTPException(404,"Лот не найден")
+    c.execute("UPDATE users SET active_lot_id=?,default_source='lot' WHERE id=?",(lid,u["id"]))
+    c.commit(); c.close()
+    return {"ok":True}
+
+@app.post("/api/lots/deactivate")
+def deactivate_lot(authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    c=con(); c.execute("UPDATE users SET active_lot_id=NULL WHERE id=?",(u["id"],)); c.commit(); c.close()
     return {"ok":True}
 
 @app.post("/api/salary")
@@ -754,6 +821,8 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                                  VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
                 pid=cur.lastrowid
                 c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
+                if (u["default_source"] if "default_source" in u.keys() else "")=="lot" and ("active_lot_id" in u.keys()) and u["active_lot_id"]:
+                    c.execute("UPDATE products SET lot_id=? WHERE id=?",(u["active_lot_id"],pid))
                 c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,u["id"]))
                 c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id,updated_at,analyzed_at) VALUES(?,?,?,?,0)",(str(media_group_id),u["id"],pid,time.time()))
                 created_new=True
@@ -762,6 +831,8 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                              VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps([url]),0,"draft","telegram",str(msg.get("message_id",""))))
             pid=cur.lastrowid
             c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
+            if (u["default_source"] if "default_source" in u.keys() else "")=="lot" and ("active_lot_id" in u.keys()) and u["active_lot_id"]:
+                c.execute("UPDATE products SET lot_id=? WHERE id=?",(u["active_lot_id"],pid))
             c.execute("UPDATE users SET pending_product_id=? WHERE id=?",(pid,u["id"]))
             created_new=True
         c.commit(); c.close()
