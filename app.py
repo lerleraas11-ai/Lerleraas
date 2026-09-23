@@ -79,6 +79,10 @@ def init():
       note TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS telegram_updates(
+      update_id TEXT PRIMARY KEY,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
     ucols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     for col,ddl in [
@@ -197,11 +201,21 @@ def telegram_api(method,payload=None):
     with urllib.request.urlopen(req,timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
 
-def telegram_send(chat_id,text):
+def telegram_send(chat_id,text,reply_markup=None):
     try:
-        telegram_api("sendMessage",{"chat_id":chat_id,"text":text})
+        payload={"chat_id":chat_id,"text":text}
+        if reply_markup is not None:
+            payload["reply_markup"]=reply_markup
+        telegram_api("sendMessage",payload)
     except Exception:
         pass
+
+def source_keyboard():
+    return {"inline_keyboard":[
+      [{"text":"🏠 Дом","callback_data":"source:home"},{"text":"📦 Лоты","callback_data":"source:lot"}],
+      [{"text":"🛒 Закупка","callback_data":"source:buy"},{"text":"🏪 Остатки","callback_data":"source:business"}],
+      [{"text":"👥 Знакомые","callback_data":"source:friends"}]
+    ]}
 
 def telegram_bot_username():
     configured=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@").strip()
@@ -218,7 +232,7 @@ def telegram_configure_webhook():
     secret=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
     if not public_url or not os.getenv("TELEGRAM_BOT_TOKEN"):
         return False
-    payload={"url":public_url+"/telegram/webhook","allowed_updates":["message"]}
+    payload={"url":public_url+"/telegram/webhook","allowed_updates":["message","callback_query"]}
     if secret:
         payload["secret_token"]=secret
     try:
@@ -278,7 +292,7 @@ class SalaryTake(BaseModel):
 
 @app.get("/")
 def home():
-    return FileResponse(BASE/"static"/"index.html")
+    return FileResponse(BASE/"static"/"index.html",headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0","Pragma":"no-cache"})
 
 @app.get("/health")
 def health():
@@ -412,6 +426,35 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
     if secret and x_telegram_bot_api_secret_token!=secret:
         raise HTTPException(403,"Bad webhook secret")
     update=await request.json()
+    update_id=str(update.get("update_id",""))
+    if update_id:
+        c=con()
+        try:
+            c.execute("INSERT INTO telegram_updates(update_id) VALUES(?)",(update_id,))
+            c.commit()
+        except sqlite3.IntegrityError:
+            c.close()
+            return {"ok":True}
+        c.close()
+
+    cb=update.get("callback_query") or {}
+    if cb:
+        data=(cb.get("data") or "").strip()
+        msg=cb.get("message") or {}
+        chat_id=str((msg.get("chat") or {}).get("id",""))
+        tg_user_id=str((cb.get("from") or {}).get("id",""))
+        if data.startswith("source:"):
+            source=data.split(":",1)[1]
+            labels={"home":"🏠 Дом","lot":"📦 Лоты","buy":"🛒 Закупка","business":"🏪 Остатки","friends":"👥 Знакомые"}
+            if source in labels:
+                c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+                if u:
+                    c.execute("UPDATE users SET default_source=? WHERE id=?",(source,u["id"])); c.commit()
+                c.close()
+                telegram_send(chat_id,"Готово 💜 Сейчас источник — "+labels[source]+". Всё, что пришлёшь дальше, сохраню туда. Можно просто кидать фото.")
+            return {"ok":True}
+        return {"ok":True}
+
     msg=update.get("message") or {}
     if not msg:
         return {"ok":True}
@@ -430,8 +473,16 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         c.execute("UPDATE users SET telegram_user_id=?,telegram_chat_id=?,telegram_link_token=NULL WHERE id=?",(tg_user_id,chat_id,u["id"]))
         c.commit(); c.close()
         event(u["id"],"TELEGRAM_CONNECTED")
-        telegram_send(chat_id,"Готово 💜 Telegram связан с Колей AI. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
+        telegram_send(chat_id,"Готово 💜 Я Коля AI. Сначала скажи, откуда сейчас будем разбирать товары:",source_keyboard())
         return {"ok":True}
+    if text in ("/source","Источник","источник"):
+        c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone(); c.close()
+        if u:
+            telegram_send(chat_id,"Откуда сейчас берём товары?",source_keyboard())
+        else:
+            telegram_send(chat_id,"Сначала подключи Telegram через приложение 💜")
+        return {"ok":True}
+
     photos=msg.get("photo") or []
     if photos:
         c=con()
@@ -474,9 +525,11 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         c.commit(); c.close()
         if created_new:
             event(u["id"],"PRODUCT_CREATED_FROM_TELEGRAM",pid)
-        telegram_send(chat_id,"Фото получила 💜 Товар уже появился в помощнике продаж. Открой приложение — там можно разобрать его с AI и сделать объявление.")
+            src=(u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home")
+            labels={"home":"🏠 Дом","lot":"📦 Лот","buy":"🛒 Закупка","business":"🏪 Остатки","friends":"👥 Знакомые"}
+            telegram_send(chat_id,"Получил 💜 Товар уже в магазине. Источник: "+labels.get(src,"📦 Товар")+".\n\nХочешь сменить источник перед следующим товаром — отправь /source.")
         return {"ok":True}
-    telegram_send(chat_id,"Пришли фото товара или альбом из нескольких фото. Я перенесу их в помощник продаж 💜")
+    telegram_send(chat_id,"Кидай фото товара или альбом 💜 Я сохраню их в магазин. Источник можно поменять командой /source.")
     return {"ok":True}
 
 @app.post("/api/products")
