@@ -606,6 +606,64 @@ def create_lot(d:LotCreate,authorization:Optional[str]=Header(None)):
     event(u["id"],"LOT_CREATED",None,{"lot_id":lid,"purchase_cost":d.purchase_cost})
     return {"id":lid}
 
+@app.post("/api/lots/{lid}/strategy")
+def lot_strategy(lid:int,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    c=con()
+    lot=c.execute("SELECT * FROM lots WHERE id=? AND user_id=?",(lid,u["id"])).fetchone()
+    if not lot:
+        c.close(); raise HTTPException(404,"Лот не найден")
+    items=[dict(x) for x in c.execute(
+        "SELECT id,name,category,price,status,listing_title,ai_json,sold_price FROM products WHERE user_id=? AND lot_id=? ORDER BY id DESC",
+        (u["id"],lid)
+    ).fetchall()]
+    c.close()
+    sold=[p for p in items if p["status"]=="sold"]
+    returned=sum((p.get("sold_price") or 0) for p in sold)
+    remaining=max(float(lot["purchase_cost"] or 0)-returned,0)
+
+    compact=[]
+    for p in items:
+        ai={}
+        try: ai=json.loads(p.get("ai_json") or "{}")
+        except Exception: ai={}
+        compact.append({
+          "id":p["id"],"name":p["name"],"category":p["category"],"price":p["price"],
+          "status":p["status"],"listing_ready":bool(p.get("listing_title")),
+          "buyer_value":ai.get("buyer_value"),"condition":ai.get("condition"),
+          "suggested_price_low":ai.get("suggested_price_low"),"suggested_price_high":ai.get("suggested_price_high")
+        })
+
+    result=ask_ai(
+        KOLYA_PROMPT+"""
+Ты помогаешь разбирать лот/паллету. Главная задача — сначала вернуть закуп, потом считать прибыль.
+Используй только реальные товары и цены из списка. Не придумывай спрос площадки, просмотры или рыночные цены.
+Ответь коротко и практично:
+1) ТОП-3: какие конкретно товары выставить первыми и почему.
+2) БЫСТРЫЕ ДЕНЬГИ: что из уже готового может быстрее вернуть часть закупа.
+3) КОМПЛЕКТЫ: какие недорогие похожие товары можно объединить, только если это логично по категориям/назначению.
+4) СЕЙЧАС: одно действие на ближайшие 20 минут.
+Для каждого товара указывай его id в виде #123, чтобы приложение могло показать его пользователю.
+Не советуй занижать цену без данных.""",
+        "Лот: "+str(lot["name"])+"\nЗакуп: "+str(lot["purchase_cost"] or 0)+
+        "\nУже вернулось: "+str(returned)+"\nОсталось отбить: "+str(remaining)+
+        "\nТовары: "+json.dumps(compact,ensure_ascii=False)
+    )
+    if not result:
+        unsold=[p for p in items if p["status"]!="sold"]
+        ready=[p for p in unsold if p.get("listing_title")]
+        ready.sort(key=lambda x:float(x.get("price") or 0),reverse=True)
+        picks=ready[:3] if ready else unsold[:3]
+        lines=[]
+        for p in picks:
+            lines.append("#"+str(p["id"])+" "+str(p.get("name") or "Товар")+" — "+str(int(p.get("price") or 0))+" ₽")
+        result="ТОП-3:\n"+("\n".join(lines) if lines else "Пока в лоте нет товаров для приоритета.")+
+               "\n\nБЫСТРЫЕ ДЕНЬГИ: начинай с готовых карточек с более высокой ценой — сначала возвращаем закуп."+
+               "\n\nКОМПЛЕКТЫ: объединяй только мелкие однотипные товары, если по отдельности их неудобно продавать."+
+               "\n\nСЕЙЧАС: выстави первый готовый товар из списка."
+    event(u["id"],"LOT_STRATEGY_VIEWED",None,{"lot_id":lid})
+    return {"text":result,"remaining":remaining}
+
 @app.post("/api/lots/{lid}/activate")
 def activate_lot(lid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
