@@ -180,8 +180,9 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
   <div class="muted">Запиши закупку один раз. Все следующие товары из источника «Лот» Коля сможет складывать сюда автоматически.</div>
   <div class="field"><label>Название лота</label><input id="lotName" placeholder="Например: Global Pro сентябрь"></div>
   <div class="field"><label>Сколько заплатила за лот</label><input id="lotCost" type="number" placeholder="55 000"></div>
+  <div class="field"><label>Примерно сколько товаров в лоте</label><input id="lotExpected" type="number" placeholder="Например: 30"></div>
   <div class="field"><label>Заметка</label><input id="lotNote" placeholder="Например: возвраты, 1 паллета"></div>
-  <button class="btn lime full" onclick="createLot()">Создать и сделать активным</button>
+  <button class="btn lime full" onclick="createLot()">Создать и начать разбор</button>
 </div></div>
 
 <div id="salaryModal" class="modal"><div class="sheet">
@@ -270,9 +271,11 @@ function renderLots(){
   lotsList.innerHTML=lots.map(l=>{
     const pct=l.purchase_cost?Math.min(100,(Number(l.returned||0)/Number(l.purchase_cost))*100):(l.returned?100:0);
     const status=l.recouped?'✅ Закуп отбита':'Осталось вернуть '+money(l.remaining);
-    return '<div class="item" style="display:block"><div class="row"><div><b>'+escapeHtml(l.name)+'</b><div class="tiny">'+(active===l.id?'Активный лот · ':'')+l.items+' товаров · '+l.sold+' продано</div></div><span class="tag">'+(l.recouped?'в плюс':'отбиваем')+'</span></div>'
+    const countText=l.expected_items?(l.items+' из '+l.expected_items+' разобрано'):(l.items+' товаров разобрано');
+    return '<div class="item" style="display:block"><div class="row"><div><b>'+escapeHtml(l.name)+'</b><div class="tiny">'+(active===l.id?'Активный лот · ':'')+countText+' · '+l.sold+' продано</div></div><span class="tag">'+(l.recouped?'в плюс':'отбиваем')+'</span></div>'
       +'<div class="readyLine"><i style="width:'+pct+'%"></i></div>'
-      +'<div class="row"><span class="muted">Закуп: '+money(l.purchase_cost)+'</span><span class="muted">Вернулось: '+money(l.returned)+'</span></div>'
+      +'<div class="grid2"><div class="aiCell"><b>Готово к публикации</b>'+l.ready+'</div><div class="aiCell"><b>Потенциал непроданных</b>'+money(l.potential_unsold||0)+'</div></div>'
+      +'<div class="row" style="margin-top:8px"><span class="muted">Закуп: '+money(l.purchase_cost)+'</span><span class="muted">Вернулось: '+money(l.returned)+'</span></div>'
       +'<div style="margin-top:7px"><b>'+status+'</b>'+(l.pure_profit?'<div class="limeText">Чистая прибыль после закупа: '+money(l.pure_profit)+'</div>':'')+'</div>'
       +'<button class="btn white full" style="margin-top:9px" onclick="lotStrategy('+l.id+')">🤖 Что выставить первым?</button>'
       +(active===l.id?'':'<button class="btn ghost full" style="margin-top:8px" onclick="activateLot('+l.id+')">Сделать активным</button>')
@@ -280,11 +283,11 @@ function renderLots(){
       +'</div>';
   }).join('');
 }
-function openLotCreate(){lotName.value='';lotCost.value='';lotNote.value='';lotModal.classList.add('on')}
+function openLotCreate(){lotName.value='';lotCost.value='';lotExpected.value='';lotNote.value='';lotModal.classList.add('on')}
 async function createLot(){
-  const name=lotName.value.trim(),purchase_cost=+lotCost.value||0,note=lotNote.value.trim();
+  const name=lotName.value.trim(),purchase_cost=+lotCost.value||0,expected_items=+lotExpected.value||0,note=lotNote.value.trim();
   if(!name)return alert('Дай лоту название');
-  await api('/api/lots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,purchase_cost,note})});
+  await api('/api/lots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,purchase_cost,note,expected_items})});
   closeM('lotModal');await boot();screen('money');
 }
 async function activateLot(id){
