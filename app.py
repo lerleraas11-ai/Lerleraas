@@ -285,7 +285,7 @@ def ai_done_message(data):
         lo=hi=0
     price=("\nОриентир: "+str(int(lo or hi))+"–"+str(int(hi or lo))+" ₽") if (lo or hi) else ""
     value=str(data.get("buyer_value") or "").strip()
-    return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+"\n\nКарточка уже собрана в приложении 💜"
+    return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+"\n\nЯ уже собрал карточку и готовое объявление 💜 Открой приложение — останется проверить и скопировать."
 
 def analyze_single_background(pid,uid,chat_id):
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
