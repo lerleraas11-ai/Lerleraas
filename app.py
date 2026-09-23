@@ -790,6 +790,31 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         msg=cb.get("message") or {}
         chat_id=str((msg.get("chat") or {}).get("id",""))
         tg_user_id=str((cb.get("from") or {}).get("id",""))
+        if data=="lot:summary":
+            c=con()
+            u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+            if u and u["active_lot_id"]:
+                p=c.execute("SELECT id FROM products WHERE user_id=? AND lot_id=? ORDER BY id DESC LIMIT 1",(u["id"],u["active_lot_id"])).fetchone()
+                lot=c.execute("SELECT * FROM lots WHERE id=? AND user_id=?",(u["active_lot_id"],u["id"])).fetchone()
+                c.close()
+                if p:
+                    progress=lot_progress_for_product(u["id"],p["id"])
+                    telegram_send(chat_id,progress["text"] if progress else "Пока не вижу товары в активном лоте.",lot_progress_keyboard())
+                elif lot:
+                    telegram_send(chat_id,"📦 "+str(lot["name"])+"\nПока 0 товаров. Кидай фото подряд — я сам сложу их в этот лот.",lot_progress_keyboard())
+            else:
+                c.close()
+                telegram_send(chat_id,"Сейчас активного лота нет. Создай его в разделе «Деньги» 💜")
+            return {"ok":True}
+        if data=="lot:finish":
+            c=con()
+            u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+            if u:
+                c.execute("UPDATE users SET active_lot_id=NULL,lot_batch_mode=0,default_source='home',pending_product_id=NULL,pending_mode='' WHERE id=?",(u["id"],))
+                c.commit()
+            c.close()
+            telegram_send(chat_id,"Готово 💜 Разбор лота закончили. Следующие фото снова будут обычными товарами.")
+            return {"ok":True}
         if data=="product:attach":
             c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
             if u and u["pending_product_id"] and (u["pending_mode"] or "") in ("clarify","attach"):
@@ -839,6 +864,22 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         c.commit(); c.close()
         event(u["id"],"TELEGRAM_CONNECTED")
         telegram_send(chat_id,"Готово 💜 Я Коля AI. Сначала скажи, откуда сейчас будем разбирать товары:",source_keyboard())
+        return {"ok":True}
+    if text in ("/lot","Лот","лот"):
+        c=con()
+        u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
+        if u and u["active_lot_id"]:
+            p=c.execute("SELECT id FROM products WHERE user_id=? AND lot_id=? ORDER BY id DESC LIMIT 1",(u["id"],u["active_lot_id"])).fetchone()
+            lot=c.execute("SELECT * FROM lots WHERE id=? AND user_id=?",(u["active_lot_id"],u["id"])).fetchone()
+            c.close()
+            if p:
+                progress=lot_progress_for_product(u["id"],p["id"])
+                telegram_send(chat_id,progress["text"] if progress else "Лот активен 💜",lot_progress_keyboard())
+            elif lot:
+                telegram_send(chat_id,"📦 "+str(lot["name"])+"\nПока 0 товаров. Кидай фото подряд — я сам считаю прогресс.",lot_progress_keyboard())
+        else:
+            c.close()
+            telegram_send(chat_id,"Активного лота пока нет. Создай его в приложении в разделе «Деньги» 💜")
         return {"ok":True}
     if text in ("/new","Новый товар","новый товар"):
         c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
