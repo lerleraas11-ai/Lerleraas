@@ -67,6 +67,11 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
       <div class="metric"><span class="tiny">Продано</span><b id="countSold">0</b></div>
     </div>
 
+    <div id="categoryMemory" class="card hide">
+      <b>🧠 Что у тебя продаётся лучше</b>
+      <div id="categoryMemoryText" class="muted" style="margin-top:7px"></div>
+    </div>
+
     <div id="staleBox" class="card hide">
       <div class="row"><div><b>👀 Коля нашёл, что докрутить</b><div id="staleText" class="muted" style="margin-top:4px"></div></div><button class="btn ghost" onclick="showStale()">Посмотреть</button></div>
     </div>
@@ -217,6 +222,17 @@ function render(){
   salaryAvailable.textContent=money(st.salary_available);salaryTaken.textContent=money(st.salary_taken);
   moneyProgress.style.width=pct+'%';moneyGoalCurrent.textContent=money(rev);moneyGoalTotal.textContent=money(goal);
   goalLabelText.textContent=p.goal_label?('Цель: '+p.goal_label):'Цель месяца';
+  const cats=st.category_insights||[];
+  const good=cats.filter(x=>x.sold>0).slice(0,3);
+  if(good.length){
+    categoryMemory.classList.remove('hide');
+    categoryMemoryText.innerHTML=good.map((x,i)=>{
+      let line='<b>'+(i+1)+'. '+escapeHtml(x.category)+'</b> — '+x.sold+' продаж';
+      if(x.avg_days!==null&&x.avg_days!==undefined)line+=' · в среднем '+Math.round(x.avg_days)+' дн.';
+      if(x.avg_profit)line+=' · '+money(x.avg_profit)+' прибыли/товар';
+      return line;
+    }).join('<br><br>');
+  }else{categoryMemory.classList.add('hide')}
   if(st.stale_count){staleBox.classList.remove('hide');staleText.textContent='Есть '+st.stale_count+' товар(а), которые уже 7+ дней в продаже.'}else{staleBox.classList.add('hide')}
   renderSourceStats();renderProducts();
 }
