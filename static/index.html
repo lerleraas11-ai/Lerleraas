@@ -3,69 +3,182 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Бизнес из дома — помощник продаж</title>
+<meta name="theme-color" content="#210b48">
+<title>Коля AI — Бизнес из дома</title>
 <style>
-:root{--bg:#210b48;--muted:#cdbff1;--lime:#dcff4b;--purple:#8150ff}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Arial;background:radial-gradient(circle at 75% -10%,#7540d8 0,#35106e 35%,#210b48 75%);color:#fff}.app{max-width:480px;margin:auto;min-height:100vh;padding:18px 16px 100px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.logo{font-size:25px;font-weight:950;line-height:.95}.logo i{color:var(--lime)}.card{background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:16px;margin-bottom:14px}.muted{color:var(--muted);font-size:13px}.big{font-size:36px;font-weight:950}.btn{border:0;border-radius:16px;padding:14px 15px;font-size:15px;font-weight:850}.lime{background:var(--lime);color:#24103e}.white{background:#fff;color:#29104f}.purple{background:var(--purple);color:#fff}.full{width:100%}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.metric{background:rgba(255,255,255,.08);padding:13px;border-radius:17px}.metric b{display:block;font-size:22px}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(480px,100%);display:grid;grid-template-columns:repeat(4,1fr);background:#190736;padding:10px 6px calc(10px + env(safe-area-inset-bottom));z-index:9}.nav button{border:0;background:none;color:#cdbef0}.nav button.on{color:var(--lime);font-weight:850}.screen{display:none}.screen.on{display:block}.item{display:flex;gap:11px;align-items:center;padding:10px;background:rgba(255,255,255,.07);border-radius:17px;margin:9px 0}.thumb{width:70px;height:70px;border-radius:13px;background:#51318a;object-fit:cover}.grow{flex:1}.tag{font-size:11px;padding:5px 8px;border-radius:99px;background:#7046b5}input,select,textarea{width:100%;border:1px solid #7551b9;background:#2b1259;color:#fff;border-radius:14px;padding:12px;font-size:15px}textarea{min-height:105px}.field{margin:10px 0}.modal{position:fixed;inset:0;background:#0009;display:none;align-items:flex-end;justify-content:center;z-index:20}.modal.on{display:flex}.sheet{width:min(480px,100%);background:#281051;border-radius:26px 26px 0 0;padding:18px;max-height:94vh;overflow:auto}.preview{aspect-ratio:4/3;border-radius:18px;background:#422375;overflow:hidden;display:grid;place-items:center;color:#c8b7ee}.preview img{width:100%;height:100%;object-fit:cover}.link{color:var(--lime);font-weight:800}.bubble{padding:11px 13px;border-radius:16px;background:#3b1b72;max-width:88%;margin:7px 0}.me{margin-left:auto;background:#7d4cff}.auth{padding-top:10vh}.hide{display:none!important}.success{position:fixed;inset:0;background:#17072fef;z-index:50;display:none;align-items:center;justify-content:center;padding:20px}.success.on{display:flex}.success .card{text-align:center;width:min(420px,100%)}.money{font-size:48px;color:var(--lime);font-weight:950}
+:root{--bg:#210b48;--bg2:#35106e;--card:#ffffff12;--line:#ffffff20;--muted:#cdbff1;--lime:#dcff4b;--purple:#8557ff;--white:#fff;--danger:#ff9bb5}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Arial,sans-serif;background:radial-gradient(circle at 80% -10%,#7540d8 0,#35106e 33%,#210b48 76%);color:#fff}
+button,input,select{font:inherit}.app{max-width:480px;margin:auto;min-height:100vh;padding:18px 16px 104px}.hide{display:none!important}
+.logo{font-weight:950;font-size:27px;line-height:1}.logo b{color:var(--lime)}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.avatar{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#9d71ff,#4b1d9b);border:2px solid #ffffff33;font-size:25px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px;margin:12px 0;backdrop-filter:blur(8px)}.hero{background:linear-gradient(145deg,#ffffff16,#7c4cff25)}
+.muted{font-size:13px;color:var(--muted);line-height:1.4}.tiny{font-size:11px;color:var(--muted)}.big{font-size:36px;font-weight:950;letter-spacing:-1px}.medium{font-size:23px;font-weight:900}.limeText{color:var(--lime)}
+.btn{border:0;border-radius:16px;padding:14px 15px;font-weight:850;font-size:15px;cursor:pointer}.lime{background:var(--lime);color:#26103f}.white{background:#fff;color:#29104f}.purple{background:var(--purple);color:#fff}.ghost{background:#ffffff10;color:#fff;border:1px solid #ffffff20}.full{width:100%}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.metric{padding:13px;background:#ffffff0d;border-radius:17px}.metric b{display:block;font-size:21px;margin-top:3px}.progress{height:9px;background:#ffffff16;border-radius:99px;overflow:hidden;margin:10px 0}.progress>i{height:100%;display:block;background:var(--lime);border-radius:99px}
+.chips{display:flex;gap:7px;overflow:auto;padding-bottom:4px;scrollbar-width:none}.chip{white-space:nowrap;border:1px solid #ffffff22;background:#ffffff0c;color:#fff;border-radius:99px;padding:8px 11px;font-size:12px}.chip.on{background:var(--lime);color:#25103e;border-color:var(--lime)}
+.screen{display:none}.screen.on{display:block}.sectionTitle{font-size:25px;font-weight:900;margin:8px 0 12px}
+.item{display:flex;gap:11px;align-items:center;padding:10px;background:#ffffff0c;border:1px solid #ffffff12;border-radius:18px;margin:9px 0}.thumb{width:72px;height:72px;border-radius:14px;background:#503083;object-fit:cover}.grow{flex:1;min-width:0}.item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tag{font-size:11px;border-radius:99px;padding:5px 8px;background:#7046b5;white-space:nowrap}
+.source{font-size:11px;color:#eadfff}.nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(480px,100%);display:grid;grid-template-columns:repeat(4,1fr);background:#180735f4;border-top:1px solid #ffffff15;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:20}.nav button{border:0;background:none;color:#cdbef0;font-size:11px;padding:3px}.nav button span{font-size:20px;display:block;margin-bottom:2px}.nav button.on{color:var(--lime);font-weight:850}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:50}.modal.on{display:flex}.sheet{width:min(480px,100%);max-height:92vh;overflow:auto;background:#281051;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom))}.preview{aspect-ratio:4/3;border-radius:19px;background:#46267b;overflow:hidden;display:grid;place-items:center;margin:8px 0 14px}.preview img{width:100%;height:100%;object-fit:cover}.field{margin:10px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}input,select{width:100%;border:1px solid #7652ba;background:#2b1259;color:#fff;border-radius:14px;padding:13px;font-size:16px}
+.bubble{padding:12px 14px;border-radius:17px;background:#3c1b73;margin:8px 0;max-width:88%;white-space:pre-wrap}.bubble.me{margin-left:auto;background:#7d4cff}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.quick button{text-align:left;min-height:74px}
+.success{position:fixed;inset:0;background:#17072ff2;z-index:80;display:none;align-items:center;justify-content:center;padding:20px}.success.on{display:flex}.success .card{width:min(420px,100%);text-align:center}.money{font-size:48px;font-weight:950;color:var(--lime)}
+.auth{padding-top:10vh}.auth .card{margin-top:25px}.link{color:var(--lime);font-weight:850;text-decoration:none}.error{color:#ffb4c5;font-size:13px;margin-top:8px}
+.kolyaLine{display:flex;gap:10px;align-items:flex-start}.botMini{width:38px;height:38px;border-radius:50%;background:linear-gradient(145deg,#9d71ff,#4b1d9b);display:grid;place-items:center;flex:0 0 auto}
+hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
 </style>
 </head>
 <body>
 <div id="auth" class="app auth">
-  <div class="logo">Бизнес<br>из <i>дома</i></div>
-  <div class="card" style="margin-top:24px">
-    <h2 id="authTitle">Войти</h2>
-    <div id="nameWrap" class="field hide"><input id="rname" placeholder="Имя"></div>
+  <div class="logo">Коля <b>AI</b><div class="muted">от «Бизнес из дома»</div></div>
+  <div class="card">
+    <h2>Войти</h2>
     <div class="field"><input id="email" type="email" placeholder="Email"></div>
     <div class="field"><input id="pass" type="password" placeholder="Пароль"></div>
-    <div id="goalWrap" class="field hide"><input id="rgoal" type="number" value="70000" placeholder="Цель на месяц"></div>
-    <button class="btn lime full" id="authBtn" onclick="doAuth()">Войти</button>
-    <div class="muted" style="text-align:center;margin-top:12px"><a class="link" href="/static/register.html" style="text-decoration:none">Нет аккаунта? Регистрация</a></div>
-    <div id="authErr" class="muted" style="margin-top:10px;color:#ffb1c2"></div>
+    <button class="btn lime full" onclick="doLogin()">Войти</button>
+    <div id="authErr" class="error"></div>
+    <div class="muted" style="text-align:center;margin-top:13px"><a class="link" href="/static/register.html">Нет аккаунта? Регистрация</a></div>
   </div>
 </div>
 
 <div id="main" class="app hide">
   <div class="top">
-    <div><div class="logo">Бизнес<br>из <i>дома</i></div><div class="muted">товар → объявление → продажа</div></div>
-    <div id="hello" class="muted"></div>
+    <div><div class="logo">Коля <b>AI</b></div><div class="muted">твой помощник по продажам из дома</div></div>
+    <div class="avatar" onclick="openSettings()">🤖</div>
   </div>
 
   <section id="home" class="screen on">
-    <div class="card"><div class="muted">Твоя цель на месяц</div><div id="goal" class="big">—</div><div class="muted"><span id="earned">—</span> заработано · <span id="sold">0</span> продаж</div></div>
-    <div class="card"><b>💜 Лера и Вика рядом</b><div id="tip" class="muted" style="margin-top:6px">Добавь первый товар — и начинаем.</div></div>
-    <button class="btn lime full" id="tgMainBtn" onclick="connectTelegram()">Подключить Telegram</button>
-    <div id="tgHint" class="muted" style="margin-top:9px;text-align:center">После подключения просто отправляй фото нашему боту — товар сам появится здесь.</div>
-    <div class="grid" style="margin-top:10px"><div class="metric"><span class="muted">Касса</span><b id="cash">—</b></div><div class="metric"><span class="muted">Товаров</span><b id="count">—</b></div></div>
+    <div class="card hero">
+      <div class="muted">Твой результат за месяц</div>
+      <div id="homeRevenue" class="big">0 ₽</div>
+      <div class="row"><span class="muted"><span id="homeSold">0</span> продаж</span><span class="muted">цель <span id="homeGoal">0 ₽</span></span></div>
+      <div class="progress"><i id="goalProgress" style="width:0%"></i></div>
+      <div id="goalLeft" class="tiny"></div>
+    </div>
+
+    <div class="card">
+      <div class="kolyaLine"><div class="botMini">🤖</div><div><b>Коля на связи</b><div id="kolyaToday" class="muted" style="margin-top:4px">Давай посмотрим, где сегодня лежат деньги 💜</div></div></div>
+    </div>
+
+    <button id="tgMainBtn" class="btn lime full" onclick="connectTelegram()">Подключить Telegram</button>
+    <div id="tgHint" class="muted" style="text-align:center;margin:8px 8px 15px">Фото кидаешь Коле в Telegram — товар сам появляется в магазине.</div>
+
+    <div class="grid3">
+      <div class="metric"><span class="tiny">Новые</span><b id="countNew">0</b></div>
+      <div class="metric"><span class="tiny">В продаже</span><b id="countListed">0</b></div>
+      <div class="metric"><span class="tiny">Продано</span><b id="countSold">0</b></div>
+    </div>
+
+    <div class="card">
+      <b>Сегодня без геройства 👇</b>
+      <div id="todayPlan" class="muted" style="margin-top:8px">1. Отправь Коле 1–3 товара<br>2. Выставь готовые карточки<br>3. Отметь продажи</div>
+    </div>
   </section>
 
-  <section id="products" class="screen"><div class="row"><h2>Мои товары</h2><button class="btn white" onclick="refreshProducts()">Обновить</button></div><div id="productsList"></div></section>
-
-  <section id="ai" class="screen">
-    <h2>AI-помощник</h2><div id="chat"></div>
-    <div class="row"><input id="q" placeholder="Спроси про свои продажи"><button class="btn lime" onclick="send()">↑</button></div>
+  <section id="products" class="screen">
+    <div class="row"><div class="sectionTitle">📦 Мои товары</div><button class="btn ghost" onclick="refreshProducts()">Обновить</button></div>
+    <div class="chips" id="statusChips">
+      <button class="chip on" onclick="setFilter('all',this)">Все</button>
+      <button class="chip" onclick="setFilter('draft',this)">Новые</button>
+      <button class="chip" onclick="setFilter('listed',this)">В продаже</button>
+      <button class="chip" onclick="setFilter('sold',this)">Продано</button>
+    </div>
+    <div class="chips" style="margin-top:8px" id="sourceChips">
+      <button class="chip on" onclick="setSource('all',this)">Все источники</button>
+      <button class="chip" onclick="setSource('home',this)">🏠 Дом</button>
+      <button class="chip" onclick="setSource('lot',this)">📦 Лоты</button>
+      <button class="chip" onclick="setSource('buy',this)">🛒 Закупка</button>
+      <button class="chip" onclick="setSource('business',this)">🏪 Остатки</button>
+      <button class="chip" onclick="setSource('friends',this)">👥 Знакомые</button>
+    </div>
+    <div id="productsList"></div>
   </section>
 
-  <section id="profile" class="screen"><h2>Профиль</h2><div class="card"><div class="muted">Тестовая версия сервиса</div><p>Твои товары и продажи сохраняются в системе.</p><button class="btn white full" onclick="logout()">Выйти</button></div></section>
+  <section id="money" class="screen">
+    <div class="sectionTitle">💰 Мои деньги</div>
+    <div class="card hero">
+      <div class="muted">Выручка</div><div id="moneyRevenue" class="big">0 ₽</div>
+      <hr>
+      <div class="row"><div><span class="tiny">Прибыль</span><div id="moneyProfit" class="medium limeText">0 ₽</div></div><div style="text-align:right"><span class="tiny">Продано</span><div id="moneySold" class="medium">0</div></div></div>
+    </div>
+    <div class="card">
+      <div class="row"><div><b>❤️ Моя зарплата</b><div class="muted">То, что можно забрать себе</div></div><div id="salaryAvailable" class="medium">0 ₽</div></div>
+      <div class="muted" style="margin-top:8px">Уже забрала: <span id="salaryTaken">0 ₽</span></div>
+      <button class="btn lime full" style="margin-top:12px" onclick="openSalary()">Забрать зарплату</button>
+    </div>
+    <div class="card">
+      <b>🎯 Моя цель</b>
+      <div id="goalLabelText" class="muted" style="margin-top:5px">Цель месяца</div>
+      <div class="progress"><i id="moneyProgress" style="width:0%"></i></div>
+      <div class="row"><span id="moneyGoalCurrent" class="muted">0 ₽</span><span id="moneyGoalTotal" class="muted">0 ₽</span></div>
+    </div>
+    <div class="card"><b>Откуда пришли деньги</b><div id="sourceStats" class="muted" style="margin-top:8px">Пока нет продаж.</div></div>
+  </section>
+
+  <section id="kolya" class="screen">
+    <div class="sectionTitle">🤖 Спросить Колю</div>
+    <div class="card">
+      <div class="kolyaLine"><div class="botMini">🤖</div><div><b>Что делаем?</b><div class="muted">Без заумностей. Разберём и решим, что делать сейчас.</div></div></div>
+    </div>
+    <div class="quick">
+      <button class="btn ghost" onclick="askQuick('Что из моих товаров лучше выставить сегодня?')">🔥 Что выставить сегодня</button>
+      <button class="btn ghost" onclick="askQuick('Что у меня продаётся лучше всего?')">📈 Что хорошо продаётся</button>
+      <button class="btn ghost" onclick="askQuick('Что мы уже продавали похожее и за сколько?')">💰 Что продавали похожее</button>
+      <button class="btn ghost" onclick="askQuick('Как мне быстрее дойти до моей цели?')">🎯 Как дойти до цели</button>
+    </div>
+    <div id="chat"></div>
+    <div class="row" style="position:sticky;bottom:75px;background:#210b48;padding:8px 0">
+      <input id="q" placeholder="Спроси Колю...">
+      <button class="btn lime" onclick="send()">↑</button>
+    </div>
+    <button class="btn ghost full" style="margin-top:10px" onclick="openSettings()">⚙️ Настройки моего бизнеса</button>
+    <button class="btn ghost full" style="margin-top:8px" onclick="logout()">Выйти</button>
+  </section>
 
   <nav class="nav">
-    <button class="on" data-id="home" onclick="screen('home')">⌂<br>Главная</button>
-    <button data-id="products" onclick="screen('products')">🏷<br>Товары</button>
-    <button data-id="ai" onclick="screen('ai')">✦<br>AI</button>
-    <button data-id="profile" onclick="screen('profile')">◯<br>Профиль</button>
+    <button class="on" data-id="home" onclick="screen('home')"><span>🏠</span>Главная</button>
+    <button data-id="products" onclick="screen('products')"><span>📦</span>Товары</button>
+    <button data-id="money" onclick="screen('money')"><span>💰</span>Деньги</button>
+    <button data-id="kolya" onclick="screen('kolya')"><span>🤖</span>Коля</button>
   </nav>
 </div>
 
 <div id="productModal" class="modal"><div id="productSheet" class="sheet"></div></div>
 
+<div id="settingsModal" class="modal"><div class="sheet">
+  <div class="row"><h2>Мой бизнес</h2><span class="link" onclick="closeM('settingsModal')">Закрыть</span></div>
+  <div class="field"><label>Цель на месяц</label><input id="setGoal" type="number"></div>
+  <div class="field"><label>На что коплю / цель</label><input id="setGoalLabel" placeholder="Например: ремонт, отпуск, подушка"></div>
+  <div class="field"><label>Откуда чаще всего товары</label>
+    <select id="setSource">
+      <option value="home">🏠 Дом / свои вещи</option>
+      <option value="lot">📦 Лоты / сток / возвраты</option>
+      <option value="buy">🛒 Закупка под перепродажу</option>
+      <option value="business">🏪 Остатки бизнеса</option>
+      <option value="friends">👥 Родные и знакомые</option>
+    </select>
+  </div>
+  <div class="field"><label>Сколько прибыли считать моей зарплатой, %</label><input id="setSalary" type="number" min="0" max="100"></div>
+  <button class="btn lime full" onclick="saveSettings()">Сохранить</button>
+</div></div>
+
+<div id="salaryModal" class="modal"><div class="sheet">
+  <div class="row"><h2>❤️ Забрать зарплату</h2><span class="link" onclick="closeM('salaryModal')">Закрыть</span></div>
+  <div class="muted">Запиши сумму, которую реально забираешь себе из прибыли.</div>
+  <div class="field"><input id="salaryAmount" type="number" placeholder="Сумма"></div>
+  <div class="field"><input id="salaryNote" placeholder="Например: себе, семья, отпуск"></div>
+  <button class="btn lime full" onclick="takeSalary()">Записать</button>
+</div></div>
+
 <div id="saleSuccess" class="success"><div class="card">
-  <div style="font-size:48px">🎉</div><h2>Продажа записана!</h2><div id="successMoney" class="money"></div>
-  <div class="muted">Ещё одна продажа. Так и строится большой результат 💜</div>
+  <div style="font-size:50px">🎉</div><h2>Есть продажа!</h2><div id="successMoney" class="money"></div>
+  <div id="successProfit" class="muted">Деньги записала. Красиво сработали 💜</div>
   <button class="btn lime full" style="margin-top:16px" onclick="saleSuccess.classList.remove('on');closeM('productModal');screen('home')">Продолжить</button>
 </div></div>
 
 <script>
-let TOKEN=localStorage.getItem('bizhome_token')||'',STATE=null,REGISTER=false,CHAT=[];
-const money=n=>new Intl.NumberFormat('ru-RU').format(Math.round(n||0))+' ₽';
+let TOKEN=localStorage.getItem('bizhome_token')||'',STATE=null,CHAT=[],FILTER='all',SOURCE='all';
+const money=n=>new Intl.NumberFormat('ru-RU').format(Math.round(Number(n)||0))+' ₽';
+const sourceName=s=>({home:'🏠 Дом',lot:'📦 Лот',buy:'🛒 Закупка',business:'🏪 Остатки',friends:'👥 Знакомые',web:'📦 Товар'}[s]||'📦 Товар');
+const statusName=s=>({draft:'Новый',listed:'В продаже',sold:'Продано'}[s]||s);
 
 async function api(url,opt={}){
   opt.headers=opt.headers||{};
@@ -73,130 +186,111 @@ async function api(url,opt={}){
   const r=await fetch(url,opt);
   const data=await r.json().catch(()=>({detail:'Ошибка'}));
   if(r.status===401 && url!='/api/login'){
-    TOKEN='';localStorage.removeItem('bizhome_token');showAuth();
-    throw new Error(data.detail||'Нужно войти');
+    TOKEN='';localStorage.removeItem('bizhome_token');showAuth();throw new Error(data.detail||'Нужно войти');
   }
   if(!r.ok)throw new Error(data.detail||'Ошибка');
   return data;
 }
-
-function toggleAuth(){
-  REGISTER=!REGISTER;
-  document.getElementById('authTitle').textContent=REGISTER?'Регистрация':'Войти';
-  document.getElementById('authBtn').textContent=REGISTER?'Создать аккаунт':'Войти';
-  document.getElementById('nameWrap').classList.toggle('hide',!REGISTER);
-  document.getElementById('goalWrap').classList.toggle('hide',!REGISTER);
-  document.getElementById('switchText').textContent=REGISTER?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация';
-}
-
-async function doAuth(){
+async function doLogin(){
   try{
-    const body=REGISTER?{
-      name:document.getElementById('rname').value,
-      email:document.getElementById('email').value,
-      password:document.getElementById('pass').value,
-      goal:+document.getElementById('rgoal').value
-    }:{
-      email:document.getElementById('email').value,
-      password:document.getElementById('pass').value
-    };
-    const r=await api(REGISTER?'/api/register':'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    TOKEN=r.token;localStorage.setItem('bizhome_token',TOKEN);await boot();
-  }catch(e){document.getElementById('authErr').textContent=e.message}
+    const r=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:pass.value})});
+    TOKEN=r.token;localStorage.setItem('bizhome_token',TOKEN);authErr.textContent='';await boot();
+  }catch(e){authErr.textContent=e.message}
 }
-
 function showAuth(){auth.classList.remove('hide');main.classList.add('hide')}
-
 async function boot(){
-  if(!TOKEN){showAuth();return}
+  if(!TOKEN)return showAuth();
   try{STATE=await api('/api/state');auth.classList.add('hide');main.classList.remove('hide');render();await refreshTelegramStatus()}
   catch(e){showAuth()}
 }
-
 function render(){
-  hello.textContent='Привет, '+STATE.profile.name+' 💜';
-  goal.textContent=money(STATE.profile.goal);
-  earned.textContent=money(STATE.stats.earned);
-  sold.textContent=STATE.stats.sold;
-  cash.textContent=money(STATE.stats.earned);
-  count.textContent=STATE.products.length;
-  tip.textContent=STATE.stats.sold
-    ?'Уже '+STATE.stats.sold+' продаж на '+money(STATE.stats.earned)+'. Не усложняй — повторяй то, что работает.'
-    :(STATE.products.length?'Товар уже в базе. Доведи его до публикации и первой продажи.':'Подключи Telegram и отправь боту первый товар — дальше всё появится здесь само.');
-  productsList.innerHTML=STATE.products.length
-    ?STATE.products.map(p=>{const st=p.status==='draft'?'Черновик':p.status==='listed'?'Выставлен':'Продан';return '<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb"></div>')+'<div class="grow"><b>'+p.name+'</b><div class="muted">'+(p.category||'Без категории')+' · '+(p.status==='sold'?'Продан '+money(p.sold_price):money(p.price))+'</div></div><span class="tag">'+st+'</span></div>'}).join('')
-    :'<div class="card"><b>Здесь появятся товары из Telegram</b><div class="muted">Подключи Telegram и отправь боту фото товара. Ничего повторно загружать не нужно.</div></div>';
+  const st=STATE.stats,p=STATE.profile,goal=Number(p.goal||0),rev=Number(st.revenue||0),pct=goal?Math.min(100,rev/goal*100):0;
+  homeRevenue.textContent=money(rev);homeSold.textContent=st.sold;homeGoal.textContent=money(goal);goalProgress.style.width=pct+'%';
+  goalLeft.textContent=goal?('До цели осталось '+money(Math.max(goal-rev,0))):'Поставь цель в настройках';
+  countNew.textContent=st.counts?.new||0;countListed.textContent=st.counts?.listed||0;countSold.textContent=st.counts?.sold||0;
+  kolyaToday.textContent=st.sold?('У тебя уже '+st.sold+' продаж. Смотрим, что можно повторить и докрутить дальше 💜'):(STATE.products.length?'Товары уже есть. Теперь доводим их до денег, без лишней суеты.':'Начнём с одного товара. Кидай фото в Telegram — дальше разберёмся вместе.');
+  moneyRevenue.textContent=money(rev);moneyProfit.textContent=money(st.profit);moneySold.textContent=st.sold;
+  salaryAvailable.textContent=money(st.salary_available);salaryTaken.textContent=money(st.salary_taken);
+  moneyProgress.style.width=pct+'%';moneyGoalCurrent.textContent=money(rev);moneyGoalTotal.textContent=money(goal);
+  goalLabelText.textContent=p.goal_label?('Цель: '+p.goal_label):'Цель месяца';
+  renderSourceStats();renderProducts();
 }
-
-function screen(id){
-  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'));
-  document.getElementById(id).classList.add('on');
-  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.id===id));
+function renderSourceStats(){
+  const rows=STATE.stats.by_source||{},parts=[];
+  Object.keys(rows).forEach(k=>{const r=rows[k];if(r.sold)parts.push(sourceName(k)+': '+r.sold+' продаж · '+money(r.profit)+' прибыли')});
+  sourceStats.innerHTML=parts.length?parts.join('<br>'):'Пока нет продаж. Как только отметишь первую — здесь появятся цифры.';
 }
+function renderProducts(){
+  let arr=STATE.products||[];
+  if(FILTER!=='all')arr=arr.filter(p=>p.status===FILTER);
+  if(SOURCE!=='all')arr=arr.filter(p=>(p.source_type||'home')===SOURCE);
+  productsList.innerHTML=arr.length?arr.map(p=>'<div class="item" onclick="openProduct('+p.id+')">'+(p.photo_url?'<img class="thumb" src="'+p.photo_url+'">':'<div class="thumb">🤖</div>')+'<div class="grow"><b>'+escapeHtml(p.name||'Новый товар')+'</b><div class="muted">'+(p.category||'Коля ещё не разобрал')+'</div><div class="source">'+sourceName(p.source_type||'home')+' · '+(p.status==='sold'?money(p.sold_price):(p.price?money(p.price):'цена не задана'))+'</div></div><span class="tag">'+statusName(p.status)+'</span></div>').join(''):'<div class="card"><b>Здесь пока пусто</b><div class="muted" style="margin-top:5px">Отправь фото Коле в Telegram. Повторно загружать в приложение ничего не нужно.</div></div>';
+}
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function screen(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.id===id));if(id==='products')renderProducts()}
+function setFilter(v,el){FILTER=v;document.querySelectorAll('#statusChips .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on');renderProducts()}
+function setSource(v,el){SOURCE=v;document.querySelectorAll('#sourceChips .chip').forEach(x=>x.classList.remove('on'));el.classList.add('on');renderProducts()}
+function closeM(id){document.getElementById(id).classList.remove('on')}
+async function refreshProducts(){await boot();screen('products')}
 async function refreshTelegramStatus(){
   try{
     const s=await api('/api/telegram/status');
-    const b=document.getElementById('tgMainBtn');
-    const h=document.getElementById('tgHint');
-    if(s.connected){
-      b.textContent='Открыть Telegram-бота';
-      b.dataset.connected='1';
-      h.textContent='Telegram подключён 💜 Отправляй боту фото или альбом — товар автоматически появится в «Мои товары».';
-    }else{
-      b.textContent='Подключить Telegram';
-      b.dataset.connected='0';
-      h.textContent='Один раз свяжи Telegram с аккаунтом. После этого фотографии больше не нужно загружать сюда вручную.';
-    }
+    if(s.connected){tgMainBtn.textContent='Открыть Колю в Telegram';tgHint.textContent='Telegram подключён 💜 Просто кидай Коле фото или альбом — товар появится здесь.'}
+    else{tgMainBtn.textContent='Подключить Telegram';tgHint.textContent='Один раз подключи Telegram. Потом только кидаешь фото Коле — без двойной загрузки.'}
   }catch(e){}
 }
-async function connectTelegram(){
-  try{
-    const r=await api('/api/telegram/link',{method:'POST'});
-    location.href=r.url;
-  }catch(e){alert(e.message)}
-}
-async function refreshProducts(){await boot();screen('products')}
+async function connectTelegram(){try{const r=await api('/api/telegram/link',{method:'POST'});location.href=r.url}catch(e){alert(e.message)}}
 async function openProduct(id){
-  const p=await api('/api/products/'+id);
-  productSheet.innerHTML='<div class="row"><h2>'+p.name+'</h2><span class="link" onclick="closeM(\'productModal\')">Закрыть</span></div>'
-    +'<div class="preview">'+(p.photo_url?'<img src="'+p.photo_url+'">':'Фото')+'</div>'
-    +'<div class="card"><div>Цена: <b>'+money(p.status==='sold'?p.sold_price:p.price)+'</b></div><div class="muted">Статус: '+(p.status==='draft'?'Черновик':p.status==='listed'?'Выставлен':'Продан')+'</div></div>'
-    +'<div class="grid"><button class="btn white" onclick="analyze('+id+')">✨ Разобрать AI</button><button class="btn white" onclick="listing('+id+')">✍️ Объявление</button></div>'
-    +'<div id="action" style="margin-top:10px"></div>'
-    +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила объявление</button>':'')
-    +(p.status==='listed'?'<button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
+  const p=await api('/api/products/'+id),src=sourceName(p.source_type||'home'),price=p.status==='sold'?p.sold_price:p.price;
+  productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
+  +'<div class="preview">'+(p.photo_url?'<img src="'+p.photo_url+'">':'Фото товара')+'</div>'
+  +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
+  +'<div class="grid2"><button class="btn white" onclick="analyze('+id+')">🤖 Разобрать с Колей</button><button class="btn white" onclick="listing('+id+')">✍️ Сделать объявление</button></div>'
+  +'<div id="action" style="margin-top:10px"></div>'
+  +(p.listing_title?'<div class="card"><b>Объявление уже готово</b><div class="muted">'+escapeHtml(p.listing_title)+'</div><button class="btn ghost full" style="margin-top:9px" onclick="copyListing('+id+')">📋 Скопировать</button></div>':'')
+  +(p.status==='draft'?'<button class="btn purple full" onclick="listed('+id+')">Я выставила объявление</button>':'')
+  +(p.status==='listed'?'<button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
   productModal.classList.add('on');
 }
-
 async function analyze(id){
-  action.innerHTML='<div class="card muted">Смотрю товар…</div>';
+  action.innerHTML='<div class="card muted">Коля смотрит товар 👀</div>';
   const r=await api('/api/products/'+id+'/analyze',{method:'POST'});
-  action.innerHTML='<div class="card">'+r.text+'</div>';
+  action.innerHTML='<div class="card" style="white-space:pre-wrap">'+escapeHtml(r.text)+'</div>';await boot();
 }
-
 async function listing(id){
-  action.innerHTML='<div class="card muted">Пишу объявление…</div>';
+  action.innerHTML='<div class="card muted">Докручиваю объявление…</div>';
   const r=await api('/api/products/'+id+'/listing',{method:'POST'});
-  action.innerHTML='<div class="card"><b>'+r.title+'</b><div class="muted" style="margin-top:8px;white-space:pre-wrap">'+r.description+'</div></div>';
+  action.innerHTML='<div class="card"><b>'+escapeHtml(r.title)+'</b><div class="muted" style="margin-top:8px;white-space:pre-wrap">'+escapeHtml(r.description)+'</div><button class="btn lime full" style="margin-top:10px" onclick="navigator.clipboard.writeText('+JSON.stringify(r.title+'\\n\\n'+r.description)+')">📋 Скопировать всё</button></div>';
 }
-
+async function copyListing(id){const p=await api('/api/products/'+id);navigator.clipboard.writeText((p.listing_title||p.name)+'\\n\\n'+(p.listing_description||''));alert('Скопировала 💜')}
 async function listed(id){await api('/api/products/'+id+'/listed',{method:'POST'});await boot();openProduct(id)}
-function saleForm(id){action.innerHTML='<div class="card"><input id="sp" type="number" placeholder="За сколько продали?"><input id="bp" style="margin-top:8px" type="number" placeholder="Закупка, если была"><button class="btn lime full" style="margin-top:8px" onclick="soldNow('+id+')">Добавить в кассу</button></div>'}
+function saleForm(id){action.innerHTML='<div class="card"><b>Запишем продажу</b><div class="field"><input id="sp" type="number" placeholder="За сколько продала?"></div><div class="field"><input id="bp" type="number" placeholder="Закупка, если была"></div><div class="field"><input id="ep" type="number" placeholder="Другие расходы, если были"></div><button class="btn lime full" onclick="soldNow('+id+')">Добавить в деньги</button></div>'}
 async function soldNow(id){
-  const amount=+sp.value;
-  await api('/api/products/'+id+'/sold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sold_price:amount,buy_price:+bp.value||0})});
-  await boot();successMoney.textContent='+'+money(amount);saleSuccess.classList.add('on');
+  const amount=+sp.value||0,buy=+bp.value||0,expenses=+ep.value||0,profit=amount-buy-expenses;
+  await api('/api/products/'+id+'/sold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sold_price:amount,buy_price:buy,expenses})});
+  await boot();successMoney.textContent='+'+money(amount);successProfit.textContent='Прибыль: '+money(profit)+'. Есть! Деньги пришли 💜';saleSuccess.classList.add('on');
 }
-
+function askQuick(text){q.value=text;send()}
 async function send(){
-  const t=q.value.trim();if(!t)return;
-  CHAT.push({r:'me',t});renderChat();q.value='';
-  const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
-  CHAT.push({r:'ai',t:r.text});renderChat();
+  const t=q.value.trim();if(!t)return;CHAT.push({r:'me',t});renderChat();q.value='';
+  try{const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});CHAT.push({r:'ai',t:r.text})}
+  catch(e){CHAT.push({r:'ai',t:'Что-то споткнулся 😅 Попробуй ещё раз.'})}
+  renderChat();
 }
-function renderChat(){chat.innerHTML=CHAT.map(x=>'<div class="bubble '+x.r+'">'+x.t+'</div>').join('')}
+function renderChat(){chat.innerHTML=CHAT.map(x=>'<div class="bubble '+x.r+'">'+escapeHtml(x.t)+'</div>').join('')}
+function openSettings(){const p=STATE.profile;setGoal.value=p.goal||70000;setGoalLabel.value=p.goal_label||'';setSource.value=p.default_source||'home';setSalary.value=p.salary_percent||30;settingsModal.classList.add('on')}
+async function saveSettings(){
+  await api('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal:+setGoal.value||0,goal_label:setGoalLabel.value,default_source:setSource.value,salary_percent:+setSalary.value||0})});
+  closeM('settingsModal');await boot();
+}
+function openSalary(){salaryAmount.value=Math.round(STATE.stats.salary_available||0);salaryNote.value='';salaryModal.classList.add('on')}
+async function takeSalary(){
+  const amount=+salaryAmount.value||0;if(amount<=0)return alert('Укажи сумму');
+  await api('/api/salary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,note:salaryNote.value})});
+  closeM('salaryModal');await boot();screen('money');
+}
 function logout(){TOKEN='';localStorage.removeItem('bizhome_token');showAuth()}
-setInterval(async()=>{if(TOKEN&&document.getElementById('main')&&!main.classList.contains('hide')){try{const s=await api('/api/state');if(STATE&&s.products.length!==STATE.products.length){STATE=s;render()}}catch(e){}}},8000);
+setInterval(async()=>{if(TOKEN&&!main.classList.contains('hide')){try{const s=await api('/api/state');if(JSON.stringify(s.stats)!==JSON.stringify(STATE.stats)||s.products.length!==STATE.products.length){STATE=s;render()}}catch(e){}}},8000);
 boot();
 </script>
 </body>
