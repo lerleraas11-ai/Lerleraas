@@ -298,7 +298,7 @@ def ai_done_message(data):
     missing=data.get("needs_clarification") or []
     tail="\n\nЯ уже собрал карточку и готовое объявление 💜"
     if missing:
-        tail+="\n\nМне не хватает пары фактов:\n• "+"\n• ".join([str(x) for x in missing[:3]])+"\n\nОтветь мне одним сообщением — я сам обновлю карточку и объявление."
+        tail+="\n\nМне не хватает пары фактов:\n• "+"\n• ".join([str(x) for x in missing[:3]])+"\n\nМожешь ответить текстом или просто дослать нужное фото — я добавлю его к этому товару и сам обновлю карточку. Если это уже новый товар, нажми «➕ Новый товар»."
     else:
         tail+=" Открой приложение — останется проверить и скопировать."
     return "Готово 👀\n"+str(data.get("name") or "Товар")+price+("\n\n"+value if value else "")+tail
@@ -523,7 +523,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         tg_user_id=str((cb.get("from") or {}).get("id",""))
         if data=="product:attach":
             c=con(); u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
-            if u and u["pending_product_id"]:
+            if u and u["pending_product_id"] and (u["pending_mode"] or "") in ("clarify","attach"):
                 c.execute("UPDATE users SET pending_mode='attach' WHERE id=?",(u["id"],)); c.commit()
                 p=c.execute("SELECT name FROM products WHERE id=? AND user_id=?",(u["pending_product_id"],u["id"])).fetchone()
                 c.close()
@@ -621,6 +621,35 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         caption=(msg.get("caption") or "").strip()
         name=caption.splitlines()[0][:120] if caption else "Товар из Telegram"
         media_group_id=msg.get("media_group_id")
+
+        if u["pending_product_id"] and (u["pending_mode"] or "") in ("clarify","attach"):
+            pid=int(u["pending_product_id"])
+            p=c.execute("SELECT photos_json,photo_url,name FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+            if p:
+                arr=[]
+                try: arr=json.loads(p["photos_json"] or "[]")
+                except Exception: arr=[]
+                if not arr and p["photo_url"]: arr=[p["photo_url"]]
+                if url not in arr: arr.append(url)
+                c.execute("UPDATE products SET photos_json=?,ai_status='waiting' WHERE id=? AND user_id=?",(json.dumps(arr),pid,u["id"]))
+                first_extra=True
+                if media_group_id:
+                    grp=c.execute("SELECT * FROM telegram_groups WHERE media_group_id=?",(str(media_group_id),)).fetchone()
+                    if grp:
+                        first_extra=False
+                        c.execute("UPDATE telegram_groups SET updated_at=? WHERE media_group_id=?",(time.time(),str(media_group_id)))
+                    else:
+                        c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id,updated_at,analyzed_at) VALUES(?,?,?,?,0)",(str(media_group_id),u["id"],pid,time.time()))
+                c.commit(); c.close()
+                if first_extra:
+                    telegram_send(chat_id,"Фото добавил к товару «"+str(p["name"] or "товар")+"» 💜 Пересматриваю карточку и объявление.")
+                event(u["id"],"PRODUCT_EXTRA_PHOTO",pid)
+                if media_group_id:
+                    threading.Thread(target=analyze_album_background,args=(str(media_group_id),pid,u["id"],chat_id),daemon=True).start()
+                else:
+                    threading.Thread(target=analyze_single_background,args=(pid,u["id"],chat_id),daemon=True).start()
+                return {"ok":True}
+
         pid=None
         created_new=False
         if media_group_id:
