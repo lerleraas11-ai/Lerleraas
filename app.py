@@ -593,41 +593,10 @@ def product(pid:int,authorization:Optional[str]=Header(None)):
 @app.post("/api/products/{pid}/analyze")
 def analyze(pid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
-    p=product(pid,authorization)
-    c=con()
-    history=[dict(x) for x in c.execute(
-        "SELECT name,sold_price FROM products WHERE user_id=? AND status='sold' ORDER BY id DESC LIMIT 8",
-        (u["id"],)
-    ).fetchall()]
-    c.close()
-    result=ask_ai(
-        KOLYA_PROMPT+"""
-Проанализируй фото товара.
-Начни ответ строго так:
-НАЗВАНИЕ: <короткое название>
-КАТЕГОРИЯ: <категория>
-РАЗБОР: <коротко: что видно, что важно покупателю, что уточнить и что сделать сейчас>.
-Не выдумывай то, чего не видно.""",
-        "Текущая подпись: "+p["name"]+"; категория: "+(p["category"] or "")+
-        "; состояние: "+(p["condition"] or "")+
-        "; прошлые продажи: "+json.dumps(history,ensure_ascii=False),
-        p.get("photo_url")
-    )
-    if result and "НАЗВАНИЕ:" in result:
-        lines=result.splitlines()
-        new_name=None; new_cat=None
-        for line in lines[:4]:
-            if line.startswith("НАЗВАНИЕ:"): new_name=line.split(":",1)[1].strip()
-            if line.startswith("КАТЕГОРИЯ:"): new_cat=line.split(":",1)[1].strip()
-        if new_name or new_cat:
-            c=con()
-            if new_name: c.execute("UPDATE products SET name=? WHERE id=? AND user_id=?",(new_name,pid,u["id"]))
-            if new_cat: c.execute("UPDATE products SET category=? WHERE id=? AND user_id=?",(new_cat,pid,u["id"]))
-            c.commit(); c.close()
-    if not result:
-        result="Демо-разбор: "+p["name"]+". Проверь размер, маркировку, комплект и дефекты. Чем точнее карточка, тем проще покупателю принять решение."
-    event(u["id"],"PRODUCT_ANALYZED",pid)
-    return {"text":result}
+    data=analyze_product_ai(pid,u["id"],con,ask_ai,event,KOLYA_PROMPT)
+    if not data:
+        raise HTTPException(404,"Товар не найден")
+    return {"data":data,"text":data.get("next_action") or "Готово 💜"}
 
 @app.post("/api/products/{pid}/listing")
 def listing(pid:int,authorization:Optional[str]=Header(None)):
