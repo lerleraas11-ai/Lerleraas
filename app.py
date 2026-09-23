@@ -72,19 +72,33 @@ def init():
       product_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS salary_withdrawals(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      amount REAL NOT NULL,
+      note TEXT DEFAULT '',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
     ucols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     for col,ddl in [
       ("telegram_user_id","ALTER TABLE users ADD COLUMN telegram_user_id TEXT"),
       ("telegram_chat_id","ALTER TABLE users ADD COLUMN telegram_chat_id TEXT"),
-      ("telegram_link_token","ALTER TABLE users ADD COLUMN telegram_link_token TEXT")
+      ("telegram_link_token","ALTER TABLE users ADD COLUMN telegram_link_token TEXT"),
+      ("default_source","ALTER TABLE users ADD COLUMN default_source TEXT DEFAULT 'home'"),
+      ("business_modes","ALTER TABLE users ADD COLUMN business_modes TEXT DEFAULT '[]'"),
+      ("salary_percent","ALTER TABLE users ADD COLUMN salary_percent REAL DEFAULT 30"),
+      ("goal_label","ALTER TABLE users ADD COLUMN goal_label TEXT DEFAULT ''")
     ]:
         if col not in ucols: c.execute(ddl)
     pcols={r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
     for col,ddl in [
       ("photos_json","ALTER TABLE products ADD COLUMN photos_json TEXT DEFAULT '[]'"),
       ("source","ALTER TABLE products ADD COLUMN source TEXT DEFAULT 'web'"),
-      ("telegram_message_id","ALTER TABLE products ADD COLUMN telegram_message_id TEXT")
+      ("telegram_message_id","ALTER TABLE products ADD COLUMN telegram_message_id TEXT"),
+      ("source_type","ALTER TABLE products ADD COLUMN source_type TEXT DEFAULT 'home'"),
+      ("sale_expenses","ALTER TABLE products ADD COLUMN sale_expenses REAL DEFAULT 0"),
+      ("listed_at","ALTER TABLE products ADD COLUMN listed_at TEXT")
     ]:
         if col not in pcols: c.execute(ddl)
     c.commit()
@@ -143,7 +157,7 @@ def ask_ai(instructions,prompt,image_url=None):
     try:
         content=[{"type":"input_text","text":prompt}]
         if image_url and image_url.startswith("/uploads/"):
-            path=BASE/image_url.lstrip("/")
+            path=UPLOADS/Path(image_url).name
             if path.exists():
                 import base64, mimetypes
                 mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
@@ -158,6 +172,18 @@ def ask_ai(instructions,prompt,image_url=None):
     except Exception:
         return None
 
+KOLYA_PROMPT="""Ты — Коля AI, помощник продавца проекта «Бизнес из дома» Леры и Вики.
+Ты говоришь по-человечески: коротко, понятно, без заумных слов и канцелярита.
+Твой стиль: «давай посмотрим», «есть за что зацепиться», «докрутим», «превратим в деньги», «не спешим отдавать дёшево», «покупатель не обязан угадывать».
+Не используй слова «оптимизация», «монетизация», «целевая аудитория», «конверсия», если можно сказать проще.
+Не придумывай бренд, модель, размер, материал, состояние или характеристики, которых не видно и которых пользователь не сообщил.
+Учитывай модель продавца: свои вещи, вещи знакомых, лоты/сток/возвраты, закупка под перепродажу, остатки бизнеса.
+Для лотов сначала помогай вернуть закупку и выделить самые денежные позиции.
+Для закупки считай: закупка → цена продажи → сколько останется.
+Для личных вещей не перегружай: 1 главная мысль + 2–3 действия.
+Цена — всегда как ориентир, а не гарантия. Если нет данных рынка, честно говори, что это ориентир по истории пользователя и товару.
+Каждый ответ заканчивай понятным следующим действием."""
+ 
 def telegram_api(method,payload=None):
     token=os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -234,9 +260,21 @@ class Login(BaseModel):
 class Sale(BaseModel):
     sold_price:float
     buy_price:float=0
+    expenses:float=0
 
 class Chat(BaseModel):
     text:str
+
+class ProfileUpdate(BaseModel):
+    goal:Optional[float]=None
+    default_source:Optional[str]=None
+    business_modes:Optional[list[str]]=None
+    salary_percent:Optional[float]=None
+    goal_label:Optional[str]=None
+
+class SalaryTake(BaseModel):
+    amount:float
+    note:str=""
 
 @app.get("/")
 def home():
@@ -289,16 +327,66 @@ def state(authorization:Optional[str]=Header(None)):
     ps=[dict(x) for x in c.execute(
         "SELECT * FROM products WHERE user_id=? ORDER BY id DESC",(u["id"],)
     ).fetchall()]
+    taken=c.execute("SELECT COALESCE(SUM(amount),0) AS total FROM salary_withdrawals WHERE user_id=?",(u["id"],)).fetchone()["total"] or 0
+    withdrawals=[dict(x) for x in c.execute("SELECT * FROM salary_withdrawals WHERE user_id=? ORDER BY id DESC LIMIT 20",(u["id"],)).fetchall()]
     c.close()
     sold=[p for p in ps if p["status"]=="sold"]
-    earned=sum(p["sold_price"] or 0 for p in sold)
-    profit=sum((p["sold_price"] or 0)-(p["buy_price"] or 0) for p in sold)
+    revenue=sum(p["sold_price"] or 0 for p in sold)
+    profit=sum((p["sold_price"] or 0)-(p["buy_price"] or 0)-(p.get("sale_expenses") or 0) for p in sold)
+    counts={
+      "new":sum(1 for p in ps if p["status"]=="draft"),
+      "listed":sum(1 for p in ps if p["status"]=="listed"),
+      "sold":len(sold)
+    }
+    by_source={}
+    for p in sold:
+        key=p.get("source_type") or "home"
+        row=by_source.setdefault(key,{"revenue":0,"profit":0,"sold":0})
+        row["revenue"]+=(p["sold_price"] or 0)
+        row["profit"]+=(p["sold_price"] or 0)-(p["buy_price"] or 0)-(p.get("sale_expenses") or 0)
+        row["sold"]+=1
+    try: modes=json.loads(u.get("business_modes") or "[]")
+    except Exception: modes=[]
+    salary_percent=float(u.get("salary_percent") or 30)
+    salary_target=max(profit,0)*salary_percent/100
     return {
-        "profile":{"name":u["name"],"goal":u["goal"]},
+        "profile":{
+          "name":u["name"],"goal":u["goal"],"goal_label":u.get("goal_label") or "",
+          "default_source":u.get("default_source") or "home","business_modes":modes,
+          "salary_percent":salary_percent
+        },
         "products":ps,
-        "stats":{"earned":earned,"profit":profit,"sold":len(sold),"avg":earned/len(sold) if sold else 0}
+        "withdrawals":withdrawals,
+        "stats":{
+          "revenue":revenue,"earned":revenue,"profit":profit,"sold":len(sold),
+          "avg":revenue/len(sold) if sold else 0,"counts":counts,"by_source":by_source,
+          "salary_taken":taken,"salary_target":salary_target,"salary_available":max(salary_target-taken,0)
+        }
     }
 
+
+@app.post("/api/profile")
+def update_profile(d:ProfileUpdate,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    fields=[]; vals=[]
+    if d.goal is not None: fields.append("goal=?"); vals.append(d.goal)
+    if d.default_source is not None: fields.append("default_source=?"); vals.append(d.default_source)
+    if d.business_modes is not None: fields.append("business_modes=?"); vals.append(json.dumps(d.business_modes,ensure_ascii=False))
+    if d.salary_percent is not None:
+        fields.append("salary_percent=?"); vals.append(max(0,min(100,d.salary_percent)))
+    if d.goal_label is not None: fields.append("goal_label=?"); vals.append(d.goal_label[:80])
+    if fields:
+        vals.append(u["id"])
+        c=con(); c.execute("UPDATE users SET "+",".join(fields)+" WHERE id=?",tuple(vals)); c.commit(); c.close()
+    return {"ok":True}
+
+@app.post("/api/salary")
+def take_salary(d:SalaryTake,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    if d.amount<=0: raise HTTPException(400,"Сумма должна быть больше нуля")
+    c=con(); c.execute("INSERT INTO salary_withdrawals(user_id,amount,note) VALUES(?,?,?)",(u["id"],d.amount,d.note[:120])); c.commit(); c.close()
+    event(u["id"],"SALARY_TAKEN",None,{"amount":d.amount})
+    return {"ok":True}
 
 @app.get("/api/telegram/status")
 def telegram_status(authorization:Optional[str]=Header(None)):
@@ -342,7 +430,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         c.execute("UPDATE users SET telegram_user_id=?,telegram_chat_id=?,telegram_link_token=NULL WHERE id=?",(tg_user_id,chat_id,u["id"]))
         c.commit(); c.close()
         event(u["id"],"TELEGRAM_CONNECTED")
-        telegram_send(chat_id,"Готово 💜 Telegram связан с твоим помощник продажом. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
+        telegram_send(chat_id,"Готово 💜 Telegram связан с Колей AI. Теперь просто присылай сюда фото товара или альбом из нескольких фото.")
         return {"ok":True}
     photos=msg.get("photo") or []
     if photos:
@@ -350,7 +438,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
         u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
         if not u:
             c.close()
-            telegram_send(chat_id,"Сначала свяжи Telegram с аккаунтом через кнопку в помощник продаже 💜")
+            telegram_send(chat_id,"Сначала свяжи Telegram с аккаунтом через кнопку в приложении 💜")
             return {"ok":True}
         url=telegram_download_photo(photos[-1]["file_id"])
         caption=(msg.get("caption") or "").strip()
@@ -374,12 +462,14 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                 cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
                                  VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps(arr),0,"draft","telegram",str(msg.get("message_id",""))))
                 pid=cur.lastrowid
+                c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
                 c.execute("INSERT INTO telegram_groups(media_group_id,user_id,product_id) VALUES(?,?,?)",(str(media_group_id),u["id"],pid))
                 created_new=True
         else:
             cur=c.execute("""INSERT INTO products(user_id,name,category,condition,photo_url,photos_json,price,status,source,telegram_message_id)
                              VALUES(?,?,?,?,?,?,?,?,?,?)""",(u["id"],name,"","",url,json.dumps([url]),0,"draft","telegram",str(msg.get("message_id",""))))
             pid=cur.lastrowid
+            c.execute("UPDATE products SET source_type=? WHERE id=?",((u["default_source"] if "default_source" in u.keys() and u["default_source"] else "home"),pid))
             created_new=True
         c.commit(); c.close()
         if created_new:
@@ -444,12 +534,13 @@ def analyze(pid:int,authorization:Optional[str]=Header(None)):
     ).fetchall()]
     c.close()
     result=ask_ai(
-        """Ты AI-помощник продавца. Анализируй фото товара точно и не выдумывай характеристики.
+        KOLYA_PROMPT+"""
+Проанализируй фото товара.
 Начни ответ строго так:
 НАЗВАНИЕ: <короткое название>
 КАТЕГОРИЯ: <категория>
-РАЗБОР: <что важно покупателю, что видно, что уточнить>.
-Если чего-то не видно — так и скажи.""",
+РАЗБОР: <коротко: что видно, что важно покупателю, что уточнить и что сделать сейчас>.
+Не выдумывай то, чего не видно.""",
         "Текущая подпись: "+p["name"]+"; категория: "+(p["category"] or "")+
         "; состояние: "+(p["condition"] or "")+
         "; прошлые продажи: "+json.dumps(history,ensure_ascii=False),
@@ -476,7 +567,7 @@ def listing(pid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
     p=product(pid,authorization)
     result=ask_ai(
-        "Пиши естественное объявление без рекламных штампов. Не придумывай характеристики. Верни ЗАГОЛОВОК и ОПИСАНИЕ.",
+        KOLYA_PROMPT+"\nСделай живое объявление без рекламных штампов и воды. Не придумывай характеристики. Верни ЗАГОЛОВОК и ОПИСАНИЕ.",
         "Товар: "+p["name"]+"; категория: "+(p["category"] or "")+
         "; состояние: "+(p["condition"] or "")+"; цена: "+str(p["price"])
     )
@@ -502,7 +593,7 @@ def listing(pid:int,authorization:Optional[str]=Header(None)):
 def listed(pid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
     c=con()
-    c.execute("UPDATE products SET status='listed' WHERE id=? AND user_id=?",(pid,u["id"]))
+    c.execute("UPDATE products SET status='listed',listed_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",(pid,u["id"]))
     c.commit()
     c.close()
     event(u["id"],"PRODUCT_LISTED",pid)
@@ -513,8 +604,8 @@ def sold(pid:int,d:Sale,authorization:Optional[str]=Header(None)):
     u=user(authorization)
     c=con()
     c.execute(
-        "UPDATE products SET status='sold',sold_price=?,buy_price=?,sold_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
-        (d.sold_price,d.buy_price,pid,u["id"])
+        "UPDATE products SET status='sold',sold_price=?,buy_price=?,sale_expenses=?,sold_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+        (d.sold_price,d.buy_price,d.expenses,pid,u["id"])
     )
     c.commit()
     c.close()
@@ -536,7 +627,7 @@ def chat(d:Chat,authorization:Optional[str]=Header(None)):
     c.close()
     context={"goal":u["goal"],"sales":sold,"active":active}
     result=ask_ai(
-        "Ты персональный AI-помощник проекта «Бизнес из дома». Используй только факты из контекста. Дай 1–3 действия.",
+        KOLYA_PROMPT+"\nТы отвечаешь как личный помощник именно этого продавца. Используй его историю товаров и продаж, не придумывай факты.",
         "Контекст: "+json.dumps(context,ensure_ascii=False)+"\nВопрос: "+d.text
     )
     if not result:
