@@ -121,6 +121,11 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
       <div class="row"><span id="moneyGoalCurrent" class="muted">0 ₽</span><span id="moneyGoalTotal" class="muted">0 ₽</span></div>
     </div>
     <div class="card"><b>Откуда пришли деньги</b><div id="sourceStats" class="muted" style="margin-top:8px">Пока нет продаж.</div></div>
+
+    <div class="card">
+      <div class="row"><div><b>📦 Лоты</b><div class="muted">Сначала отбиваем закуп — потом считаем прибыль</div></div><button class="btn ghost" onclick="openLotCreate()">+ Лот</button></div>
+      <div id="lotsList" style="margin-top:10px"></div>
+    </div>
   </section>
 
   <section id="kolya" class="screen">
@@ -168,6 +173,15 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
   </div>
   <div class="field"><label>Сколько прибыли считать моей зарплатой, %</label><input id="setSalary" type="number" min="0" max="100"></div>
   <button class="btn lime full" onclick="saveSettings()">Сохранить</button>
+</div></div>
+
+<div id="lotModal" class="modal"><div class="sheet">
+  <div class="row"><h2>📦 Новый лот</h2><span class="link" onclick="closeM('lotModal')">Закрыть</span></div>
+  <div class="muted">Запиши закупку один раз. Все следующие товары из источника «Лот» Коля сможет складывать сюда автоматически.</div>
+  <div class="field"><label>Название лота</label><input id="lotName" placeholder="Например: Global Pro сентябрь"></div>
+  <div class="field"><label>Сколько заплатила за лот</label><input id="lotCost" type="number" placeholder="55 000"></div>
+  <div class="field"><label>Заметка</label><input id="lotNote" placeholder="Например: возвраты, 1 паллета"></div>
+  <button class="btn lime full" onclick="createLot()">Создать и сделать активным</button>
 </div></div>
 
 <div id="salaryModal" class="modal"><div class="sheet">
@@ -236,6 +250,7 @@ function render(){
   }else{categoryMemory.classList.add('hide')}
   if(st.stale_count){staleBox.classList.remove('hide');staleText.textContent='Есть '+st.stale_count+' товар(а), которые уже 7+ дней в продаже.'}else{staleBox.classList.add('hide')}
   renderDailyPlan(st.daily_plan||{});
+  renderLots();
   renderSourceStats();renderProducts();
 }
 function renderDailyPlan(plan){
@@ -245,6 +260,33 @@ function renderDailyPlan(plan){
     return '<div class="item" '+click+' style="cursor:pointer"><div style="font-size:20px">'+(a.type==='publish'?'🚀':a.type==='finish'?'🛠️':a.type==='boost'?'👀':a.type==='sales'?'💰':'📸')+'</div><div class="grow"><b>Шаг '+(i+1)+'</b><div class="muted">'+escapeHtml(a.text||'')+'</div></div><span class="tag">сделать</span></div>';
   }).join(''):'<div class="muted">Сегодня всё спокойно 💜</div>';
   todayGoalHint.textContent=plan.goal_hint||'';
+}
+function renderLots(){
+  const lots=STATE.lots||[],active=STATE.profile.active_lot_id;
+  if(!lots.length){
+    lotsList.innerHTML='<div class="muted">Пока лотов нет. Создай первый — Коля начнёт считать, сколько уже отбили.</div>';
+    return;
+  }
+  lotsList.innerHTML=lots.map(l=>{
+    const pct=l.purchase_cost?Math.min(100,(Number(l.returned||0)/Number(l.purchase_cost))*100):(l.returned?100:0);
+    const status=l.recouped?'✅ Закуп отбита':'Осталось вернуть '+money(l.remaining);
+    return '<div class="item" style="display:block"><div class="row"><div><b>'+escapeHtml(l.name)+'</b><div class="tiny">'+(active===l.id?'Активный лот · ':'')+l.items+' товаров · '+l.sold+' продано</div></div><span class="tag">'+(l.recouped?'в плюс':'отбиваем')+'</span></div>'
+      +'<div class="readyLine"><i style="width:'+pct+'%"></i></div>'
+      +'<div class="row"><span class="muted">Закуп: '+money(l.purchase_cost)+'</span><span class="muted">Вернулось: '+money(l.returned)+'</span></div>'
+      +'<div style="margin-top:7px"><b>'+status+'</b>'+(l.pure_profit?'<div class="limeText">Чистая прибыль после закупа: '+money(l.pure_profit)+'</div>':'')+'</div>'
+      +(active===l.id?'':'<button class="btn ghost full" style="margin-top:9px" onclick="activateLot('+l.id+')">Сделать активным</button>')
+      +'</div>';
+  }).join('');
+}
+function openLotCreate(){lotName.value='';lotCost.value='';lotNote.value='';lotModal.classList.add('on')}
+async function createLot(){
+  const name=lotName.value.trim(),purchase_cost=+lotCost.value||0,note=lotNote.value.trim();
+  if(!name)return alert('Дай лоту название');
+  await api('/api/lots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,purchase_cost,note})});
+  closeM('lotModal');await boot();screen('money');
+}
+async function activateLot(id){
+  await api('/api/lots/'+id+'/activate',{method:'POST'});await boot();screen('money');
 }
 function renderSourceStats(){
   const rows=STATE.stats.by_source||{},parts=[];
