@@ -602,9 +602,12 @@ def analyze(pid:int,authorization:Optional[str]=Header(None)):
 def listing(pid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
     p=product(pid,authorization)
+    ai={}
+    try: ai=json.loads(p.get("ai_json") or "{}")
+    except Exception: ai={}
     result=ask_ai(
-        KOLYA_PROMPT+"\nСделай живое объявление без рекламных штампов и воды. Не придумывай характеристики. Верни ЗАГОЛОВОК и ОПИСАНИЕ.",
-        "Товар: "+p["name"]+"; категория: "+(p["category"] or "")+
+        KOLYA_PROMPT+"\nСделай живое объявление без рекламных штампов и воды. Используй только подтверждённые данные из AI-карточки и полей товара. Не превращай неизвестное в факт. Верни ЗАГОЛОВОК и ОПИСАНИЕ.",
+        "Карточка по фото: "+json.dumps(ai,ensure_ascii=False)+"\nТовар: "+p["name"]+"; категория: "+(p["category"] or "")+
         "; состояние: "+(p["condition"] or "")+"; цена: "+str(p["price"])
     )
     if not result:
