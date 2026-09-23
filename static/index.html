@@ -33,7 +33,7 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
     <h2>Войти</h2>
     <div class="field"><input id="email" type="email" placeholder="Email"></div>
     <div class="field"><input id="pass" type="password" placeholder="Пароль"></div>
-    <button class="btn lime full" onclick="doLogin()">Войти</button>
+    <button id="loginBtn" type="button" class="btn lime full" onclick="doLogin()">Войти</button>
     <div id="authErr" class="error"></div>
     <div class="muted" style="text-align:center;margin-top:13px"><a class="link" href="/static/register.html">Нет аккаунта? Регистрация</a></div>
   </div>
@@ -235,16 +235,36 @@ async function api(url,opt={}){
   return data;
 }
 async function doLogin(){
+  const emailEl=document.getElementById('email');
+  const passEl=document.getElementById('pass');
+  const errEl=document.getElementById('authErr');
+  const btn=document.getElementById('loginBtn');
+  const emailValue=(emailEl?.value||'').trim();
+  const passwordValue=passEl?.value||'';
+  if(!emailValue||!passwordValue){errEl.textContent='Введи email и пароль';return}
   try{
-    const r=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:pass.value})});
-    TOKEN=r.token;localStorage.setItem('bizhome_token',TOKEN);authErr.textContent='';await boot();
-  }catch(e){authErr.textContent=e.message}
+    if(btn){btn.disabled=true;btn.textContent='Вхожу…'}
+    errEl.textContent='';
+    const r=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:emailValue,password:passwordValue})});
+    TOKEN=r.token;localStorage.setItem('bizhome_token',TOKEN);await boot();
+  }catch(e){
+    errEl.textContent=e.message||'Не получилось войти';
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Войти'}
+  }
 }
-function showAuth(){auth.classList.remove('hide');main.classList.add('hide')}
+function showAuth(){
+  document.getElementById('auth')?.classList.remove('hide');
+  document.getElementById('main')?.classList.add('hide');
+}
 async function boot(){
   if(!TOKEN)return showAuth();
-  try{STATE=await api('/api/state');auth.classList.add('hide');main.classList.remove('hide');render();await refreshTelegramStatus()}
-  catch(e){showAuth()}
+  try{
+    STATE=await api('/api/state');
+    document.getElementById('auth')?.classList.add('hide');
+    document.getElementById('main')?.classList.remove('hide');
+    render();await refreshTelegramStatus();
+  }catch(e){showAuth()}
 }
 function render(){
   const st=STATE.stats,p=STATE.profile,goal=Number(p.goal||0),rev=Number(st.revenue||0),pct=goal?Math.min(100,rev/goal*100):0;
@@ -583,6 +603,8 @@ async function takeSalary(){
 function logout(){TOKEN='';localStorage.removeItem('bizhome_token');showAuth()}
 setInterval(async()=>{if(TOKEN&&!main.classList.contains('hide')){try{const s=await api('/api/state');if(JSON.stringify(s.stats)!==JSON.stringify(STATE.stats)||s.products.length!==STATE.products.length){STATE=s;render()}}catch(e){}}},8000);
 document.getElementById('cpSource')?.addEventListener('change',updateCreateCost);
+document.getElementById('pass')?.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+document.getElementById('email')?.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 boot();
 </script>
 </body>
