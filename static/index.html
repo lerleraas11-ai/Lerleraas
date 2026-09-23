@@ -160,7 +160,7 @@ hr{border:0;border-top:1px solid #ffffff14;margin:14px 0}
 
 <div id="createProductModal" class="modal"><div class="sheet">
   <div class="row"><div><h2>✨ Новый товар</h2><div class="muted">Можно создать прямо здесь — Коля сам разберёт фото</div></div><span class="link" onclick="closeM('createProductModal')">Закрыть</span></div>
-  <div class="field"><label>Фото товара</label><input id="cpPhoto" type="file" accept="image/*" capture="environment"></div>
+  <div class="field"><label>Фото товара</label><input id="cpPhoto" type="file" accept="image/*" multiple></div>
   <div class="field"><label>Название, если хочешь подсказать</label><input id="cpName" placeholder="Можно оставить пустым — Коля попробует определить"></div>
   <div class="field"><label>Откуда товар</label><select id="cpSource">
     <option value="home">🏠 Дом / свои вещи</option>
@@ -347,10 +347,10 @@ function updateCreateCost(){
   else{cpCostWrap.classList.add('hide');cpCost.value=''}
 }
 async function createProductInApp(){
-  const file=cpPhoto.files?.[0];
-  if(!file)return alert('Добавь фото товара');
+  const files=[...(cpPhoto.files||[])];
+  if(!files.length)return alert('Добавь хотя бы одно фото товара');
   const fd=new FormData();
-  fd.append('photo',file);
+  files.slice(0,8).forEach(file=>fd.append('photos',file));
   fd.append('name',(cpName.value||'').trim()||'Новый товар');
   fd.append('condition',(cpCondition.value||'').trim());
   fd.append('price',String(+cpPrice.value||0));
@@ -498,8 +498,10 @@ async function openProduct(id){
   const src=sourceName(p.source_type||'home'),price=p.status==='sold'?p.sold_price:p.price,photos=getPhotos(p),ai=getAI(p);
   const mainPhoto=photos[0]||'';
   const gallery=photos.length>1?'<div class="gallery">'+photos.map((x,i)=>'<img class="'+(i===0?'on':'')+'" src="'+x+'" onclick="switchPhoto('+JSON.stringify(x)+',this)">').join('')+'</div>':'';
-  productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
+  productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\'productModal\')">Закрыть</span></div>'
   +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
+  +'<input id="extraPhotosInput" class="hide" type="file" accept="image/*" multiple onchange="uploadExtraPhotos('+id+',this)">'
+  +'<button class="btn white full" style="margin-bottom:10px" onclick="document.getElementById(\'extraPhotosInput\').click()">📷 Добавить ещё фото</button>'
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
   +resaleBlock(p,id)
   +finalReadyBlock(p,ai,id)
@@ -510,6 +512,20 @@ async function openProduct(id){
   +'<div id="action" style="margin-top:10px"></div>'
   +(p.status==='listed'?'<button class="btn white full" style="margin-bottom:8px" onclick="boostProduct('+id+')">😴 Почему не продаётся?</button><button class="btn lime full" onclick="saleForm('+id+')">Продано 🎉</button>':'');
   productModal.classList.add('on');
+}
+async function uploadExtraPhotos(id,input){
+  const files=[...(input.files||[])];
+  if(!files.length)return;
+  const fd=new FormData();
+  files.slice(0,8).forEach(file=>fd.append('photos',file));
+  action.innerHTML='<div class="card muted">Добавляю фото и пересматриваю товар 👀</div>';
+  try{
+    await api('/api/products/'+id+'/photos',{method:'POST',body:fd});
+    await boot();
+    await openProduct(id);
+  }catch(e){
+    action.innerHTML='<div class="card muted">Не получилось добавить фото. Попробуй ещё раз.</div>';
+  }
 }
 async function analyze(id){
   action.innerHTML='<div class="card muted">Коля пересматривает все фотографии 👀</div>';
