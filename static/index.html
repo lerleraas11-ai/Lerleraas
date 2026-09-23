@@ -348,6 +348,27 @@ function switchPhoto(src,el){
   const main=document.getElementById('mainProductPhoto');if(main)main.src=src;
   document.querySelectorAll('.gallery img').forEach(x=>x.classList.remove('on'));if(el)el.classList.add('on');
 }
+function resaleBlock(p,id){
+  if((p.source_type||'')!=='buy')return '';
+  const buy=Number(p.buy_price||0),sale=Number(p.price||0),profit=sale-buy,margin=buy?profit/buy*100:0;
+  let h='<div class="card"><b>🛒 Закупка под перепродажу</b>';
+  if(buy>0){
+    h+='<div class="grid2" style="margin-top:9px"><div class="aiCell"><b>Закуп</b>'+money(buy)+'</div><div class="aiCell"><b>Плановая цена</b>'+(sale?money(sale):'ещё нет')+'</div></div>';
+    if(sale>0)h+='<div style="margin-top:9px"><b>'+(profit>=0?'Потенциально останется ':'Ниже закупки на ')+money(Math.abs(profit))+'</b>'+(profit>=0?'<div class="muted">Это примерно '+Math.round(margin)+'% к закупке до дополнительных расходов.</div>':'<div class="muted">Проверь цену перед публикацией.</div>')+'</div>';
+    h+='<button class="btn ghost full" style="margin-top:10px" onclick="editPurchaseCost('+id+','+buy+')">Изменить закуп</button>';
+  }else{
+    h+='<div class="muted" style="margin-top:6px">Запиши закупочную цену — Коля начнёт считать потенциальную и реальную прибыль.</div><button class="btn lime full" style="margin-top:10px" onclick="editPurchaseCost('+id+',0)">💸 Записать закуп</button>';
+  }
+  return h+'</div>';
+}
+async function editPurchaseCost(id,current){
+  const raw=prompt('За сколько купила товар?',current||'');
+  if(raw===null)return;
+  const value=Number(String(raw).replace(',','.').replace(/\s/g,''));
+  if(!Number.isFinite(value)||value<0)return alert('Укажи сумму цифрами');
+  await api('/api/products/'+id+'/purchase-cost',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({buy_price:value})});
+  await boot();await openProduct(id);
+}
 function readiness(p,ai){
   let score=0,total=0,missing=[];
   const add=(ok,label)=>{total++;if(ok)score++;else missing.push(label)};
@@ -422,6 +443,7 @@ async function openProduct(id){
   productSheet.innerHTML='<div class="row"><h2>'+escapeHtml(p.name||'Новый товар')+'</h2><span class="link" onclick="closeM(\\'productModal\\')">Закрыть</span></div>'
   +'<div class="preview">'+(mainPhoto?'<img id="mainProductPhoto" src="'+mainPhoto+'">':'Фото товара')+'</div>'+gallery
   +'<div class="card"><div class="row"><span class="tag">'+statusName(p.status)+'</span><span class="source">'+src+'</span></div><div class="medium" style="margin-top:10px">'+(price?money(price):'Цена пока не задана')+'</div><div class="muted">'+(p.category||'Коля ещё не определил категорию')+'</div></div>'
+  +resaleBlock(p,id)
   +finalReadyBlock(p,ai,id)
   +aiDetails(ai,p.ai_status)
   +((ai.needs_clarification?.length||p.user_notes)?'<div class="card"><b>💬 Уточнить Коле</b><div class="muted" style="margin-top:5px">Если по фото что-то не видно — просто допиши факт. Например: «стелька 17 см», «есть коробка», «дефект только на рукаве».</div>'+(p.user_notes?'<div class="tiny" style="margin-top:8px">Уже учтено: '+escapeHtml(p.user_notes)+'</div>':'')+'<div class="row" style="margin-top:10px"><input id="clarifyInput" placeholder="Напиши уточнение"><button class="btn lime" onclick="clarifyProduct('+id+')">Добавить</button></div></div>':'')
@@ -455,7 +477,10 @@ async function boostProduct(id){
     action.innerHTML='<div class="card"><b>🤖 Что бы я сделал</b><div class="muted" style="white-space:pre-wrap;margin-top:8px">'+escapeHtml(r.text)+'</div></div>';
   }catch(e){action.innerHTML='<div class="card muted">Не получилось разобрать. Попробуй ещё раз.</div>'}
 }
-function saleForm(id){action.innerHTML='<div class="card"><b>Запишем продажу</b><div class="field"><input id="sp" type="number" placeholder="За сколько продала?"></div><div class="field"><input id="bp" type="number" placeholder="Закупка, если была"></div><div class="field"><input id="ep" type="number" placeholder="Другие расходы, если были"></div><button class="btn lime full" onclick="soldNow('+id+')">Добавить в деньги</button></div>'}
+async function saleForm(id){
+  const p=await api('/api/products/'+id);
+  action.innerHTML='<div class="card"><b>Запишем продажу</b><div class="field"><input id="sp" type="number" placeholder="За сколько продала?"></div><div class="field"><input id="bp" type="number" value="'+(p.buy_price||'')+'" placeholder="Закупка, если была"></div><div class="field"><input id="ep" type="number" placeholder="Другие расходы, если были"></div><button class="btn lime full" onclick="soldNow('+id+')">Добавить в деньги</button></div>';
+}
 async function soldNow(id){
   const amount=+sp.value||0,buy=+bp.value||0,expenses=+ep.value||0,profit=amount-buy-expenses;
   await api('/api/products/'+id+'/sold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sold_price:amount,buy_price:buy,expenses})});
