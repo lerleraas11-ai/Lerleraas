@@ -274,7 +274,9 @@ function renderLots(){
       +'<div class="readyLine"><i style="width:'+pct+'%"></i></div>'
       +'<div class="row"><span class="muted">Закуп: '+money(l.purchase_cost)+'</span><span class="muted">Вернулось: '+money(l.returned)+'</span></div>'
       +'<div style="margin-top:7px"><b>'+status+'</b>'+(l.pure_profit?'<div class="limeText">Чистая прибыль после закупа: '+money(l.pure_profit)+'</div>':'')+'</div>'
-      +(active===l.id?'':'<button class="btn ghost full" style="margin-top:9px" onclick="activateLot('+l.id+')">Сделать активным</button>')
+      +'<button class="btn white full" style="margin-top:9px" onclick="lotStrategy('+l.id+')">🤖 Что выставить первым?</button>'
+      +(active===l.id?'':'<button class="btn ghost full" style="margin-top:8px" onclick="activateLot('+l.id+')">Сделать активным</button>')
+      +'<div id="lotStrategy'+l.id+'" style="margin-top:8px"></div>'
       +'</div>';
   }).join('');
 }
@@ -287,6 +289,17 @@ async function createLot(){
 }
 async function activateLot(id){
   await api('/api/lots/'+id+'/activate',{method:'POST'});await boot();screen('money');
+}
+async function lotStrategy(id){
+  const box=document.getElementById('lotStrategy'+id);
+  box.innerHTML='<div class="muted">Коля раскладывает лот по приоритету 👀</div>';
+  try{
+    const r=await api('/api/lots/'+id+'/strategy',{method:'POST'});
+    let text=escapeHtml(r.text||'').replace(/#(\d+)/g,'<span class="link" onclick="openProduct($1)">#$1</span>');
+    box.innerHTML='<div class="card" style="margin:8px 0 0"><b>🤖 План по лоту</b><div class="muted" style="white-space:pre-wrap;margin-top:8px">'+text+'</div></div>';
+  }catch(e){
+    box.innerHTML='<div class="muted">Не получилось собрать план. Попробуй ещё раз.</div>';
+  }
 }
 function renderSourceStats(){
   const rows=STATE.stats.by_source||{},parts=[];
