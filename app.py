@@ -296,6 +296,21 @@ def lot_progress_for_product(uid,pid):
              "\nПотенциал непроданных по текущим карточкам: "+str(int(potential))+" ₽"
     }
 
+def resale_hint(price,buy_price):
+    try:
+        price=float(price or 0); buy_price=float(buy_price or 0)
+    except Exception:
+        price=buy_price=0
+    if buy_price<=0:
+        return ""
+    if price<=0:
+        return "Закуп записал: "+str(int(buy_price))+" ₽. Когда определим цену продажи — покажу потенциальную прибыль."
+    profit=price-buy_price
+    margin=(profit/buy_price*100) if buy_price else 0
+    if profit>=0:
+        return "Закуп: "+str(int(buy_price))+" ₽\nЦена продажи: "+str(int(price))+" ₽\nПотенциально останется: "+str(int(profit))+" ₽ ("+str(int(margin))+"% к закупке)"
+    return "Закуп: "+str(int(buy_price))+" ₽\nТекущая цена ниже закупки на "+str(int(abs(profit)))+" ₽. Проверь цену перед публикацией."
+
 def telegram_bot_username():
     configured=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@").strip()
     if configured:
@@ -362,12 +377,16 @@ def analyze_single_background(pid,uid,chat_id):
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
     missing=bool((data or {}).get("needs_clarification") or (data or {}).get("missing_photos"))
     c=con()
-    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
+    p=c.execute("SELECT source_type,buy_price,price FROM products WHERE id=? AND user_id=?",(pid,uid)).fetchone()
+    u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone()
+    mode="clarify" if missing else ("buy_cost" if p and p["source_type"]=="buy" and not (p["buy_price"] or 0) else "")
+    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,mode,uid))
     c.commit(); c.close()
-    c=con(); u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone(); c.close()
     progress=lot_progress_for_product(uid,pid) if u and u["lot_batch_mode"] else None
     if progress:
         telegram_send(chat_id,"Готово 👀 "+str((data or {}).get("name") or "Товар")+"\n\n"+progress["text"],lot_progress_keyboard())
+    elif mode=="buy_cost":
+        telegram_send(chat_id,ai_done_message(data)+"\n\n💸 За сколько купила этот товар? Напиши только сумму, например: 480")
     else:
         telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
@@ -392,12 +411,16 @@ def analyze_album_background(media_group_id,pid,uid,chat_id):
     data=analyze_product_ai(pid,uid,con,ask_ai,event,KOLYA_PROMPT)
     missing=bool((data or {}).get("needs_clarification") or (data or {}).get("missing_photos"))
     c=con()
-    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
+    p=c.execute("SELECT source_type,buy_price,price FROM products WHERE id=? AND user_id=?",(pid,uid)).fetchone()
+    u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone()
+    mode="clarify" if missing else ("buy_cost" if p and p["source_type"]=="buy" and not (p["buy_price"] or 0) else "")
+    c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,mode,uid))
     c.commit(); c.close()
-    c=con(); u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone(); c.close()
     progress=lot_progress_for_product(uid,pid) if u and u["lot_batch_mode"] else None
     if progress:
         telegram_send(chat_id,"Готово 👀 "+str((data or {}).get("name") or "Товар")+"\n\n"+progress["text"],lot_progress_keyboard())
+    elif mode=="buy_cost":
+        telegram_send(chat_id,ai_done_message(data)+"\n\n💸 За сколько купила этот товар? Напиши только сумму, например: 480")
     else:
         telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
@@ -415,6 +438,9 @@ class Sale(BaseModel):
     sold_price:float
     buy_price:float=0
     expenses:float=0
+
+class PurchaseCost(BaseModel):
+    buy_price:float
 
 class Chat(BaseModel):
     text:str
@@ -899,7 +925,28 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
     if text and not text.startswith("/"):
         c=con()
         u=c.execute("SELECT * FROM users WHERE telegram_user_id=?",(tg_user_id,)).fetchone()
-        if u and u["pending_product_id"]:
+        if u and u["pending_product_id"] and (u["pending_mode"] or "")=="buy_cost":
+            import re
+            m=re.search(r'(\d[\d\s.,]*)',text)
+            cost=0
+            if m:
+                raw=m.group(1).replace(" ","").replace(",",".")
+                try: cost=float(raw)
+                except Exception: cost=0
+            if cost>0:
+                pid=int(u["pending_product_id"])
+                p=c.execute("SELECT name,price FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+                if p:
+                    c.execute("UPDATE products SET buy_price=? WHERE id=? AND user_id=?",(cost,pid,u["id"]))
+                    c.execute("UPDATE users SET pending_mode='' WHERE id=?",(u["id"],))
+                    c.commit(); c.close()
+                    event(u["id"],"PURCHASE_COST_SET",pid,{"buy_price":cost})
+                    telegram_send(chat_id,"Записал 💜\n"+resale_hint(p["price"],cost)+"\n\nТеперь после продажи посчитаю реальную прибыль.",product_continue_keyboard(False))
+                    return {"ok":True}
+            c.close()
+            telegram_send(chat_id,"Напиши сумму закупки цифрами, например: 480")
+            return {"ok":True}
+        if u and u["pending_product_id"] and (u["pending_mode"] or "") in ("clarify","attach"):
             pid=int(u["pending_product_id"])
             p=c.execute("SELECT user_notes,name FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
             if p:
@@ -916,7 +963,7 @@ async def telegram_webhook(request: __import__("fastapi").Request, x_telegram_bo
                 return {"ok":True}
         c.close()
         if u:
-            telegram_send(chat_id,"Не понял, к какому товару это добавить. Сначала пришли фото товара 💜")
+            telegram_send(chat_id,"Кидай фото нового товара 💜 Если это уточнение к текущему — нажми «📷 Дослать фото».")
             return {"ok":True}
 
     photos=msg.get("photo") or []
@@ -1080,6 +1127,20 @@ def clarify_product(pid:int,d:Clarification,authorization:Optional[str]=Header(N
     event(u["id"],"PRODUCT_CLARIFIED",pid,{"text":note})
     return {"ok":True,"data":data}
 
+@app.post("/api/products/{pid}/purchase-cost")
+def set_purchase_cost(pid:int,d:PurchaseCost,authorization:Optional[str]=Header(None)):
+    u=user(authorization)
+    if d.buy_price<0:
+        raise HTTPException(400,"Закупка не может быть отрицательной")
+    c=con()
+    p=c.execute("SELECT id,price FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+    if not p:
+        c.close(); raise HTTPException(404,"Товар не найден")
+    c.execute("UPDATE products SET buy_price=? WHERE id=? AND user_id=?",(d.buy_price,pid,u["id"]))
+    c.commit(); c.close()
+    event(u["id"],"PURCHASE_COST_SET",pid,{"buy_price":d.buy_price})
+    return {"ok":True,"hint":resale_hint(p["price"],d.buy_price)}
+
 @app.post("/api/products/{pid}/listing")
 def listing(pid:int,authorization:Optional[str]=Header(None)):
     u=user(authorization)
@@ -1176,9 +1237,12 @@ def listed(pid:int,authorization:Optional[str]=Header(None)):
 def sold(pid:int,d:Sale,authorization:Optional[str]=Header(None)):
     u=user(authorization)
     c=con()
+    current=c.execute("SELECT buy_price FROM products WHERE id=? AND user_id=?",(pid,u["id"])).fetchone()
+    stored_buy=float(current["buy_price"] or 0) if current else 0
+    final_buy=d.buy_price if d.buy_price>0 else stored_buy
     c.execute(
         "UPDATE products SET status='sold',sold_price=?,buy_price=?,sale_expenses=?,sold_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
-        (d.sold_price,d.buy_price,d.expenses,pid,u["id"])
+        (d.sold_price,final_buy,d.expenses,pid,u["id"])
     )
     c.commit()
     c.close()
