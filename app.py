@@ -258,6 +258,44 @@ def product_continue_keyboard(has_missing=False):
     rows.append([{"text":"➕ Новый товар","callback_data":"product:new"}])
     return {"inline_keyboard":rows}
 
+def lot_progress_keyboard():
+    return {"inline_keyboard":[
+      [{"text":"📊 Итог по лоту","callback_data":"lot:summary"}],
+      [{"text":"✅ Закончить разбор лота","callback_data":"lot:finish"}]
+    ]}
+
+def lot_progress_for_product(uid,pid):
+    c=con()
+    p=c.execute("SELECT lot_id FROM products WHERE id=? AND user_id=?",(pid,uid)).fetchone()
+    if not p or not p["lot_id"]:
+        c.close(); return None
+    lot=c.execute("SELECT * FROM lots WHERE id=? AND user_id=?",(p["lot_id"],uid)).fetchone()
+    if not lot:
+        c.close(); return None
+    items=[dict(x) for x in c.execute(
+      "SELECT status,price,listing_title,sold_price FROM products WHERE user_id=? AND lot_id=?",(uid,lot["id"])
+    ).fetchall()]
+    c.close()
+    total=len(items)
+    ready=sum(1 for x in items if x.get("listing_title"))
+    sold=sum(1 for x in items if x["status"]=="sold")
+    returned=sum(float(x.get("sold_price") or 0) for x in items if x["status"]=="sold")
+    potential=sum(float(x.get("price") or 0) for x in items if x["status"]!="sold")
+    expected=int(lot["expected_items"] or 0)
+    purchase=float(lot["purchase_cost"] or 0)
+    remaining=max(purchase-returned,0)
+    target=(" из "+str(expected)) if expected else ""
+    return {
+      "lot_id":lot["id"],"name":lot["name"],"total":total,"expected":expected,"ready":ready,
+      "sold":sold,"returned":returned,"potential":potential,"remaining":remaining,
+      "text":"📦 "+str(lot["name"])+"\nРазобрано: "+str(total)+target+
+             "\nГотово к публикации: "+str(ready)+
+             "\nПродано: "+str(sold)+
+             "\nВернулось: "+str(int(returned))+" ₽"+
+             "\nОсталось отбить: "+str(int(remaining))+" ₽"+
+             "\nПотенциал непроданных по текущим карточкам: "+str(int(potential))+" ₽"
+    }
+
 def telegram_bot_username():
     configured=os.getenv("TELEGRAM_BOT_USERNAME","").lstrip("@").strip()
     if configured:
@@ -326,7 +364,12 @@ def analyze_single_background(pid,uid,chat_id):
     c=con()
     c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
     c.commit(); c.close()
-    telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
+    c=con(); u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone(); c.close()
+    progress=lot_progress_for_product(uid,pid) if u and u["lot_batch_mode"] else None
+    if progress:
+        telegram_send(chat_id,"Готово 👀 "+str((data or {}).get("name") or "Товар")+"\n\n"+progress["text"],lot_progress_keyboard())
+    else:
+        telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
 def analyze_album_background(media_group_id,pid,uid,chat_id):
     time.sleep(2.6)
@@ -351,7 +394,12 @@ def analyze_album_background(media_group_id,pid,uid,chat_id):
     c=con()
     c.execute("UPDATE users SET pending_product_id=?,pending_mode=? WHERE id=?",(pid,"clarify" if missing else "",uid))
     c.commit(); c.close()
-    telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
+    c=con(); u=c.execute("SELECT lot_batch_mode FROM users WHERE id=?",(uid,)).fetchone(); c.close()
+    progress=lot_progress_for_product(uid,pid) if u and u["lot_batch_mode"] else None
+    if progress:
+        telegram_send(chat_id,"Готово 👀 "+str((data or {}).get("name") or "Товар")+"\n\n"+progress["text"],lot_progress_keyboard())
+    else:
+        telegram_send(chat_id,ai_done_message(data),product_continue_keyboard(missing))
 
 class Register(BaseModel):
     name:str
