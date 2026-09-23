@@ -109,6 +109,12 @@ def init():
       ("ai_updated_at","ALTER TABLE products ADD COLUMN ai_updated_at TEXT")
     ]:
         if col not in pcols: c.execute(ddl)
+    gcols={r["name"] for r in c.execute("PRAGMA table_info(telegram_groups)").fetchall()}
+    for col,ddl in [
+      ("updated_at","ALTER TABLE telegram_groups ADD COLUMN updated_at REAL DEFAULT 0"),
+      ("analyzed_at","ALTER TABLE telegram_groups ADD COLUMN analyzed_at REAL DEFAULT 0")
+    ]:
+        if col not in gcols: c.execute(ddl)
     c.commit()
     c.close()
 init()
